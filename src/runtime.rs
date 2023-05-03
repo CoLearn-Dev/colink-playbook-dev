@@ -50,19 +50,21 @@ impl RuntimeFunc {
         to_replace: String,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {
         let re = Regex::new(r"\{\{(.+?)\}\}").unwrap();
-        let path = re.replace_all(&to_replace, |caps: &regex::Captures<'_>| {
-            let raw = caps.get(0).unwrap().as_str();
-            let key = caps.get(1).unwrap().as_str();
-            let val: Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> = match key
-            {
-                "user_id" => Ok(cl.get_user_id().unwrap()),
-                "task_id" => Ok(cl.get_task_id().unwrap()),
-                "user_id_hash" => Ok(RuntimeFunc::md5(cl.get_user_id().unwrap()).unwrap()),
-                "task_id_hash" => Ok(RuntimeFunc::md5(cl.get_task_id().unwrap()).unwrap()),
-                _ => Err("playbook: replace key not match".into()),
-            };
-            val.unwrap()
-        }).to_string();
+        let path = re
+            .replace_all(&to_replace, |caps: &regex::Captures<'_>| {
+                let raw = caps.get(0).unwrap().as_str();
+                let key = caps.get(1).unwrap().as_str();
+                let val: Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> =
+                    match key {
+                        "user_id" => Ok(cl.get_user_id().unwrap()),
+                        "task_id" => Ok(cl.get_task_id().unwrap()),
+                        "user_id_hash" => Ok(RuntimeFunc::md5(cl.get_user_id().unwrap()).unwrap()),
+                        "task_id_hash" => Ok(RuntimeFunc::md5(cl.get_task_id().unwrap()).unwrap()),
+                        _ => Err("playbook: replace key not match".into()),
+                    };
+                val.unwrap()
+            })
+            .to_string();
         let re = Regex::new(r"\$(\w+)").unwrap();
         let replaced_path = re.replace_all(&path, |caps: &regex::Captures| {
             env::var(&caps[1]).unwrap_or_else(|_| caps[0].to_string())
@@ -297,7 +299,7 @@ impl RuntimeFunc {
             return Err("playbook: `process` need `step_name`".into());
         } else {
             self.sign_process_and_run(cl.clone(), process_map.as_mut(), process_sign.unwrap())?;
-            if process_kill==None && process_wait == None{
+            if process_kill == None && process_wait == None {
                 return Ok(());
             }
         }
