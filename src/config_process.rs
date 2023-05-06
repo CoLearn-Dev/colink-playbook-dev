@@ -47,7 +47,7 @@ impl Role {
             max_num: max_num,
             min_num: min_num,
             steps: steps,
-            workdir: workdir.to_string(),
+            workdir: workdir.to_string()+"/",
         })
     }
 }
@@ -58,7 +58,8 @@ pub struct ProtocolConfig {
 }
 
 impl ProtocolConfig {
-    pub fn new(name: String, value: &Value) -> Result<ProtocolConfig, Box<dyn std::error::Error>> {
+    pub fn new(value: &Value) -> Result<ProtocolConfig, Box<dyn std::error::Error>> {
+        let name = value.get("name").unwrap().as_str().unwrap();
         let workdir = value.get("workdir").unwrap().as_str().unwrap();
         let mut roles: Vec<Role> = Vec::new();
         let roles_table = value
@@ -69,15 +70,15 @@ impl ProtocolConfig {
             roles.push(Role::new(name.clone(), value, workdir.to_string())?);
         }
         Ok(ProtocolConfig {
-            protocol_name: name,
+            protocol_name: name.to_string(),
             roles: roles,
         })
     }
 }
 
 pub fn generate_config_from_toml() -> Result<ProtocolConfig, Box<dyn std::error::Error>> {
-    let toml_str = fs::read_to_string("colink.toml")?;
-    let root_node = toml_str.parse::<Value>()?;
+    let toml_str = fs::read_to_string("colink.toml").unwrap();
+    let root_node = toml_str.parse::<Value>().unwrap();
     let mut protocol_config_name = String::new();
     let root_table = root_node.as_table().unwrap();
     for (name, value) in root_table {
@@ -85,17 +86,17 @@ pub fn generate_config_from_toml() -> Result<ProtocolConfig, Box<dyn std::error:
             if name == "package" {
                 let use_playbook = value.get("use_playbook").unwrap().as_bool().unwrap();
                 if use_playbook == false {
-                    Err("use_playbook need to be true to use playbook module")?;
+                    return Err("use_playbook need to be true to use playbook module".into());
                 }
                 continue;
             }
             if protocol_config_name != "" {
-                Err("only one protocol can be defined in colink.toml")?;
+                return Err("only one protocol can be defined in colink.toml".into());
             }
             protocol_config_name = name.clone();
         }
     }
     let protocol_node = root_node.get(protocol_config_name.clone()).unwrap();
-    let ret_config = ProtocolConfig::new(protocol_config_name, protocol_node)?;
+    let ret_config = ProtocolConfig::new( protocol_node).unwrap();
     Ok(ret_config)
 }

@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         user_funcs.insert(
             name,
             Box::new(PlaybookRuntime {
-                func: RuntimeFunc::new(cl.clone(), role.workdir.clone()),
+                func: RuntimeFunc::new(role.workdir.clone()),
                 role: role,
             }),
         );
