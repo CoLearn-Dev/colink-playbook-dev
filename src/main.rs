@@ -1,8 +1,8 @@
-#![allow(unused_variables)]
+#![allow(unused_variables)]  // ?
 
 mod config_process;
 use config_process::generate_config_from_toml;
-pub mod runtime;
+pub mod runtime;  // ?
 use runtime::{PlaybookRuntime, RuntimeFunc};
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         Box<dyn colink::ProtocolEntry + Send + Sync>,
     > = std::collections::HashMap::new();
     let protocol_config = generate_config_from_toml().unwrap();
-    for role in protocol_config.roles {
+    for role in protocol_config.roles {   // for protocols in package...
         let name = protocol_config.protocol_name.clone() + ":" + role.name.as_str();
         user_funcs.insert(
             name,
