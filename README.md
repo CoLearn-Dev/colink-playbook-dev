@@ -46,7 +46,13 @@ You can define your protocol like this:
 			
 ```
 
-## 4. Supported action and format
+## 4. Run your protocol
+
+```bash
+cargo run -- --addr server_addr --jwt user_jwt
+```
+
+## 5. Supported action and format
 
 * dynamic path
 
