@@ -47,7 +47,7 @@ impl Role {
             max_num: max_num,
             min_num: min_num,
             steps: steps,
-            workdir: workdir.to_string()+"/",
+            workdir: workdir.to_string() + "/",
         })
     }
 }
@@ -97,6 +97,6 @@ pub fn generate_config_from_toml() -> Result<ProtocolConfig, Box<dyn std::error:
         }
     }
     let protocol_node = root_node.get(protocol_config_name.clone()).unwrap();
-    let ret_config = ProtocolConfig::new( protocol_node).unwrap();
+    let ret_config = ProtocolConfig::new(protocol_node).unwrap();
     Ok(ret_config)
 }

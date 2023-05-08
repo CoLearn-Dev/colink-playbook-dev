@@ -1,8 +1,9 @@
 use std::{
     env,
     io::{Read, Write},
+    os::unix::process::ExitStatusExt,
     path::PathBuf,
-    process::{Output, Stdio}, os::unix::process::ExitStatusExt,
+    process::{Output, Stdio},
 };
 
 use crate::config_process::Role;
@@ -18,7 +19,7 @@ pub struct PlaybookRuntime {
 
 pub struct RuntimeFunc {
     working_dir: String,
-    process_map: Mutex<std::collections::HashMap<String, std::process::Child>>
+    process_map: Mutex<std::collections::HashMap<String, std::process::Child>>,
 }
 
 impl RuntimeFunc {
@@ -70,13 +71,17 @@ impl RuntimeFunc {
                             } else if indexes.contains("..") {
                                 let mut indexes = indexes.split("..");
                                 let start = indexes.next().unwrap().parse::<usize>().unwrap_or(0);
-                                let end = indexes.next().unwrap_or("").parse::<usize>().unwrap_or(values.len());
+                                let end = indexes
+                                    .next()
+                                    .unwrap_or("")
+                                    .parse::<usize>()
+                                    .unwrap_or(values.len());
                                 path.push_str(&values[start..end].iter().collect::<String>());
                             } else {
                                 let index = indexes.parse::<usize>().unwrap();
                                 path.push(values[index]);
                             }
-                            i = end+2;
+                            i = end + 2;
                         }
                         None => {
                             let var_name = &var_string[..];
@@ -86,7 +91,7 @@ impl RuntimeFunc {
                                 _ => panic!("Invalid variable"),
                             };
                             path.push_str(&values[..]);
-                            i = end+2;
+                            i = end + 2;
                         }
                     }
                 }
@@ -97,9 +102,8 @@ impl RuntimeFunc {
             }
         }
         let re = Regex::new(r"\$(\w+)").unwrap();
-        let replaced_path = re.replace_all(&path, |caps: &regex::Captures| {
-            env::var(&caps[1]).unwrap()
-        });
+        let replaced_path =
+            re.replace_all(&path, |caps: &regex::Captures| env::var(&caps[1]).unwrap());
         Ok(replaced_path.to_string())
     }
 
@@ -188,7 +192,10 @@ impl RuntimeFunc {
         command.current_dir(RuntimeFunc::replace_path_value(cl, &self.working_dir).unwrap());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
-        self.process_map.lock().await.insert(process_name.clone(), command.spawn()?);
+        self.process_map
+            .lock()
+            .await
+            .insert(process_name.clone(), command.spawn()?);
         Ok(())
     }
 
@@ -211,9 +218,15 @@ impl RuntimeFunc {
                 return Err(e.into());
             }
         };
-        if !exit_status.success() && !(ignore_kill && exit_status.signal().unwrap() == 9){
-            std::io::copy(&mut std::io::BufReader::new(child.stderr.unwrap()),&mut std::io::stderr())?;
-            std::io::copy(&mut std::io::BufReader::new(child.stdout.unwrap()),&mut std::io::stderr())?;
+        if !exit_status.success() && !(ignore_kill && exit_status.signal().unwrap() == 9) {
+            std::io::copy(
+                &mut std::io::BufReader::new(child.stderr.unwrap()),
+                &mut std::io::stderr(),
+            )?;
+            std::io::copy(
+                &mut std::io::BufReader::new(child.stdout.unwrap()),
+                &mut std::io::stderr(),
+            )?;
             return Err("playbook call porcess error".into());
         }
         if let Some(stdout_file) = stdout_file {
@@ -246,7 +259,10 @@ impl RuntimeFunc {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let mut child = self.process_map.lock().await.remove(process_name).unwrap();
         child.kill()?;
-        self.process_map.lock().await.insert(process_name.clone(), child);
+        self.process_map
+            .lock()
+            .await
+            .insert(process_name.clone(), child);
         Ok(())
     }
 
@@ -299,9 +315,7 @@ impl RuntimeFunc {
         entry_name: &String,
         file: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self
-            .gen_file_obj(&cl, file.to_string(), true)
-            .unwrap();
+        let mut file = self.gen_file_obj(&cl, file.to_string(), true).unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
         let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
@@ -325,9 +339,7 @@ impl RuntimeFunc {
         entry_name: &String,
         file: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self
-            .gen_file_obj(&cl, file.to_string(), true)
-            .unwrap();
+        let mut file = self.gen_file_obj(&cl, file.to_string(), true).unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
         let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
@@ -341,9 +353,7 @@ impl RuntimeFunc {
         entry_name: &String,
         file: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self
-            .gen_file_obj(&cl, file.to_string(), false)
-            .unwrap();
+        let mut file = self.gen_file_obj(&cl, file.to_string(), false).unwrap();
         let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
         let msg = cl.read_entry(&entry_name).await.unwrap();
         file.write_all(msg.as_slice())?;
@@ -357,9 +367,7 @@ impl RuntimeFunc {
         file: &String,
         timeout: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self
-            .gen_file_obj(&cl, file.to_string(), false)
-            .unwrap();
+        let mut file = self.gen_file_obj(&cl, file.to_string(), false).unwrap();
         let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
         let timeout = timeout.parse::<u64>().unwrap();
         let msg = cl.read_or_wait(&entry_name).await.unwrap();
@@ -390,14 +398,15 @@ impl RuntimeFunc {
             if step_name == None {
                 return Err("playbook: `process` need `step_name`".into());
             } else {
-                self.sign_process_and_run(&cl,  step_name.unwrap(),process_sign.unwrap()).await?;
+                self.sign_process_and_run(&cl, step_name.unwrap(), process_sign.unwrap())
+                    .await?;
                 if process_kill == None && process_wait == None {
                     return Ok(());
                 }
             }
         }
         if process_kill != None {
-            self.process_kill( process_kill.unwrap()).await?;
+            self.process_kill(process_kill.unwrap()).await?;
             self.communicate_with_process(
                 cl,
                 process_kill.unwrap(),
@@ -405,7 +414,8 @@ impl RuntimeFunc {
                 step_argv.get("stderr_file"),
                 step_argv.get("return_code"),
                 true,
-            ).await?;
+            )
+            .await?;
             return Ok(());
         }
         if process_wait != None {
@@ -416,7 +426,8 @@ impl RuntimeFunc {
                 step_argv.get("stderr_file"),
                 step_argv.get("return_code"),
                 false,
-            ).await?;
+            )
+            .await?;
             return Ok(());
         }
         let send_variable_name = step_argv.get("send_variable");
