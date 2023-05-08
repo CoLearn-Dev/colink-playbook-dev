@@ -2,7 +2,7 @@ use std::{
     env,
     io::{Read, Write},
     path::PathBuf,
-    process::{Output, Stdio},
+    process::{Output, Stdio}, os::unix::process::ExitStatusExt,
 };
 
 use crate::config_process::Role;
@@ -211,7 +211,7 @@ impl RuntimeFunc {
                 return Err(e.into());
             }
         };
-        if !exit_status.success() && !(ignore_kill && exit_status.code().unwrap() == 9){
+        if !exit_status.success() && !(ignore_kill && exit_status.signal().unwrap() == 9){
             std::io::copy(&mut std::io::BufReader::new(child.stderr.unwrap()),&mut std::io::stderr())?;
             std::io::copy(&mut std::io::BufReader::new(child.stdout.unwrap()),&mut std::io::stderr())?;
             return Err("playbook call porcess error".into());
