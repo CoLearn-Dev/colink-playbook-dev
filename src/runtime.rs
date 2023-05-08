@@ -1,3 +1,5 @@
+// interpreter.rs
+
 use std::{
     env,
     io::{Read, Write},
@@ -12,17 +14,17 @@ use regex::Regex;
 use serde_json::json;
 use tokio::sync::Mutex;
 
-pub struct PlaybookRuntime {
+pub struct PlaybookRuntime {  // naming?
     pub role: Role,
     pub func: RuntimeFunc,
 }
 
-pub struct RuntimeFunc {
+pub struct RuntimeFunc {  // naming?  "Context"
     working_dir: String,
     process_map: Mutex<std::collections::HashMap<String, std::process::Child>>,
 }
 
-impl RuntimeFunc {
+impl RuntimeFunc {  // naming?
     pub fn new(working_dir: String) -> RuntimeFunc {
         RuntimeFunc {
             working_dir: working_dir,
@@ -30,7 +32,7 @@ impl RuntimeFunc {
         }
     }
 
-    fn get_role_participants(participants: &[Participant], role_name: String) -> Vec<Participant> {
+    fn get_role_participants(participants: &[Participant], role_name: String) -> Vec<Participant> {  // we have this in sdk?
         let mut role_participants: Vec<Participant> = Vec::new();
         for participant in participants {
             if participant.role == role_name {
@@ -40,7 +42,7 @@ impl RuntimeFunc {
         role_participants
     }
 
-    fn replace_path_value(
+    fn replace_path_value(  // seperate as helper, also not only path
         cl: &CoLink,
         to_replace: &str,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -48,7 +50,7 @@ impl RuntimeFunc {
         let task_id = cl.get_task_id().unwrap();
         let mut path = String::new();
         let mut i = 0;
-        while i < to_replace.len() {
+        while i < to_replace.len() {  // let's work on this next time
             match to_replace[i..].find("{{") {
                 Some(start) => {
                     path.push_str(&to_replace[i..i + start]);
@@ -107,15 +109,15 @@ impl RuntimeFunc {
         Ok(replaced_path.to_string())
     }
 
-    fn gen_file_obj(
+    fn gen_file_obj(  // open / create , also not object
         &self,
         cl: &CoLink,
         file_name: String,
-        is_read: bool,
+        is_read: bool,  // seperate into two functions
     ) -> Result<Box<std::fs::File>, Box<dyn std::error::Error + Send + Sync + 'static>> {
         let replaced_path = RuntimeFunc::replace_path_value(cl, &file_name).unwrap();
         let path = PathBuf::from(replaced_path.to_string());
-        let parent = path.parent().unwrap();
+        let parent = path.parent().unwrap();  // only_write
         std::fs::create_dir_all(parent)?;
         if is_read {
             let file = std::fs::File::open(replaced_path.to_string()).unwrap();
@@ -138,14 +140,14 @@ impl RuntimeFunc {
             if participant.role == role_name {
                 count_up += 1;
             }
-        }
+        }  // z.iter().filter(|&&x| x=="a").count()
         if count_up < min_num || count_up > max_num {
             return Err("roles num not match".into());
-        }
+        }  // if !(min_num..max_num).contains(z.iter().filter(|&&x| x=="a").count()) {return Err}
         Ok(())
     }
 
-    fn store_param(
+    fn store_param(  // store_param_to_file
         &self,
         cl: &CoLink,
         param: &Vec<u8>,
@@ -167,7 +169,7 @@ impl RuntimeFunc {
         Ok(())
     }
 
-    fn simple_run(
+    fn simple_run(  // ?  run_and_wait
         &self,
         cl: &CoLink,
         command_str: &String,
@@ -180,7 +182,7 @@ impl RuntimeFunc {
         Ok(output)
     }
 
-    async fn sign_process_and_run(
+    async fn sign_process_and_run(  // run
         &self,
         cl: &CoLink,
         process_name: &String,
@@ -199,7 +201,7 @@ impl RuntimeFunc {
         Ok(())
     }
 
-    async fn communicate_with_process(
+    async fn communicate_with_process(  // wait
         &self,
         cl: &CoLink,
         process_name: &String,
@@ -256,7 +258,7 @@ impl RuntimeFunc {
     async fn process_kill(
         &self,
         process_name: &String,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {   // we can pack this err for simplicity; type Error_=xxx;
         let mut child = self.process_map.lock().await.remove(process_name).unwrap();
         child.kill()?;
         self.process_map
@@ -375,7 +377,7 @@ impl RuntimeFunc {
         Ok(())
     }
 
-    async fn decide_and_call(
+    async fn decide_and_call(  // evaluate? Also, it should take StepSpec & Ctx
         &self,
         cl: &CoLink,
         participants: &[Participant],
@@ -472,10 +474,10 @@ impl RuntimeFunc {
                 .await?;
             return Ok(());
         }
-        let delete_entry = step_argv.get("delete_entry");
+        let delete_entry = step_argv.get("delete_entry");  // if let? (also for other places)
         if delete_entry != None {
             self.delete_entry(cl, delete_entry.unwrap()).await?;
-            return Ok(());
+            return Ok(());  // do we really need to return
         }
         let update_entry = step_argv.get("update_entry");
         if update_entry != None {
@@ -483,7 +485,7 @@ impl RuntimeFunc {
             self.update_entry(cl, update_entry.unwrap(), file).await?;
             return Ok(());
         }
-        Err("playbook: no match step action".into())
+        Err("playbook: no match step action".into())  // then do nothing: we should prevent error spelling from the parser step
     }
 }
 
@@ -503,11 +505,11 @@ impl ProtocolEntry for PlaybookRuntime {
         )?;
         let set_dir = RuntimeFunc::replace_path_value(&cl, &self.func.working_dir).unwrap();
         std::fs::create_dir_all(&set_dir)?;
-        std::env::set_current_dir(set_dir)?;
+        std::env::set_current_dir(set_dir)?;  // double check?
         self.func.store_param(&cl, &param, &participants)?;
         for step in self.role.steps.clone() {
             self.func
-                .decide_and_call(&cl, participants.as_slice(), step)
+                .decide_and_call(&cl, participants.as_slice(), step) 
                 .await?;
         }
         Ok(())
