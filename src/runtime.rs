@@ -9,6 +9,7 @@ use crate::config_process::Role;
 use colink::{CoLink, Participant, ProtocolEntry};
 use regex::Regex;
 use serde_json::json;
+use tokio::sync::Mutex;
 
 pub struct PlaybookRuntime {
     pub role: Role,
@@ -17,12 +18,14 @@ pub struct PlaybookRuntime {
 
 pub struct RuntimeFunc {
     working_dir: String,
+    process_map: Mutex<std::collections::HashMap<String, std::process::Child>>
 }
 
 impl RuntimeFunc {
     pub fn new(working_dir: String) -> RuntimeFunc {
         RuntimeFunc {
             working_dir: working_dir,
+            process_map: Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -173,10 +176,9 @@ impl RuntimeFunc {
         Ok(output)
     }
 
-    fn sign_process_and_run(
+    async fn sign_process_and_run(
         &self,
         cl: &CoLink,
-        process_map: &mut std::collections::HashMap<String, std::process::Child>,
         process_name: &String,
         process_str: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -186,21 +188,20 @@ impl RuntimeFunc {
         command.current_dir(RuntimeFunc::replace_path_value(cl, &self.working_dir).unwrap());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
-        process_map.insert(process_name.clone(), command.spawn()?);
+        self.process_map.lock().await.insert(process_name.clone(), command.spawn()?);
         Ok(())
     }
 
-    fn communicate_with_process(
+    async fn communicate_with_process(
         &self,
         cl: &CoLink,
-        process_map: &mut std::collections::HashMap<String, std::process::Child>,
         process_name: &String,
         stdout_file: Option<&String>,
         stderr_file: Option<&String>,
         return_code: Option<&String>,
         ignore_kill: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut child = process_map.remove(process_name).unwrap();
+        let mut child = self.process_map.lock().await.remove(process_name).unwrap();
         let exit_status = match child.try_wait() {
             Ok(Some(status)) => status,
             Ok(None) => child.wait()?,
@@ -239,14 +240,13 @@ impl RuntimeFunc {
         Ok(())
     }
 
-    fn process_kill(
+    async fn process_kill(
         &self,
-        process_map: &mut std::collections::HashMap<String, std::process::Child>,
         process_name: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut child = process_map.remove(process_name).unwrap();
+        let mut child = self.process_map.lock().await.remove(process_name).unwrap();
         child.kill()?;
-        process_map.insert(process_name.clone(), child);
+        self.process_map.lock().await.insert(process_name.clone(), child);
         Ok(())
     }
 
@@ -370,7 +370,6 @@ impl RuntimeFunc {
     async fn decide_and_call(
         &self,
         cl: &CoLink,
-        process_map: &mut Box<std::collections::HashMap<String, std::process::Child>>,
         participants: &[Participant],
         step_argv: std::collections::HashMap<String, String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -391,35 +390,33 @@ impl RuntimeFunc {
             if step_name == None {
                 return Err("playbook: `process` need `step_name`".into());
             } else {
-                self.sign_process_and_run(&cl, process_map.as_mut(), step_name.unwrap(),process_sign.unwrap())?;
+                self.sign_process_and_run(&cl,  step_name.unwrap(),process_sign.unwrap()).await?;
                 if process_kill == None && process_wait == None {
                     return Ok(());
                 }
             }
         }
         if process_kill != None {
-            self.process_kill(process_map.as_mut(), process_kill.unwrap())?;
+            self.process_kill( process_kill.unwrap()).await?;
             self.communicate_with_process(
                 cl,
-                process_map.as_mut(),
                 process_kill.unwrap(),
                 step_argv.get("stdout_file"),
                 step_argv.get("stderr_file"),
                 step_argv.get("return_code"),
                 true,
-            )?;
+            ).await?;
             return Ok(());
         }
         if process_wait != None {
             self.communicate_with_process(
                 cl,
-                process_map.as_mut(),
                 process_wait.unwrap(),
                 step_argv.get("stdout_file"),
                 step_argv.get("stderr_file"),
                 step_argv.get("return_code"),
                 false,
-            )?;
+            ).await?;
             return Ok(());
         }
         let send_variable_name = step_argv.get("send_variable");
@@ -497,11 +494,9 @@ impl ProtocolEntry for PlaybookRuntime {
         std::fs::create_dir_all(&set_dir)?;
         std::env::set_current_dir(set_dir)?;
         self.func.store_param(&cl, &param, &participants)?;
-        let mut process_map: Box<std::collections::HashMap<String, std::process::Child>> =
-            Box::new(std::collections::HashMap::new());
         for step in self.role.steps.clone() {
             self.func
-                .decide_and_call(&cl, &mut process_map, participants.as_slice(), step)
+                .decide_and_call(&cl, participants.as_slice(), step)
                 .await?;
         }
         Ok(())
