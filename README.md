@@ -58,7 +58,7 @@ You can define your protocol like this:
 
     * format example:
 
-    ```toml
+    ```
     "{{task_id}}"
     "{{task_id[..]}}"	# same as "{{task_id}}"
     "{{task_id[1..]}}"
