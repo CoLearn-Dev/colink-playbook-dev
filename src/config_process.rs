@@ -1,19 +1,21 @@
+// better filename: spec_parser.rs
+
 use std::fs;
 use toml::Value;
 
-pub struct Role {
+pub struct Role {   // RoleSpec
     pub name: String,
-    pub max_num: i64,
-    pub min_num: i64,
-    pub steps: Vec<std::collections::HashMap<String, String>>,
-    pub workdir: String,
+    pub max_num: i64,  // Option
+    pub min_num: i64,  // Option
+    pub steps: Vec<std::collections::HashMap<String, String>>,  // separate StepSpec
+    pub workdir: String,  // Option
 }
 
-impl Role {
+impl Role {  
     pub fn new(
         name: String,
         value: &Value,
-        father_workdir: String,
+        father_workdir: String,  // first, we can assign default value later; second, father->parent; third, it's just a default value
     ) -> Result<Role, Box<dyn std::error::Error>> {
         let max_num = match value.get("max_num") {
             Some(num) => num.as_integer().unwrap(),
@@ -57,7 +59,9 @@ pub struct ProtocolConfig {
     pub roles: Vec<Role>,
 }
 
-impl ProtocolConfig {
+//type PackageSpec = Vec<ProtocolSpec> ?
+
+impl ProtocolConfig {   // protocol spec
     pub fn new(value: &Value) -> Result<ProtocolConfig, Box<dyn std::error::Error>> {
         let name = value.get("name").unwrap().as_str().unwrap();
         let workdir = value.get("workdir").unwrap().as_str().unwrap();
@@ -76,13 +80,15 @@ impl ProtocolConfig {
     }
 }
 
+// read_spec_from_toml(toml_str: &str) -> ... PackageSpec?
+// rename all config to spec / protocol spec?
 pub fn generate_config_from_toml() -> Result<ProtocolConfig, Box<dyn std::error::Error>> {
     let toml_str = fs::read_to_string("colink.toml").unwrap();
     let root_node = toml_str.parse::<Value>().unwrap();
     let mut protocol_config_name = String::new();
     let root_table = root_node.as_table().unwrap();
     for (name, value) in root_table {
-        if let Value::Table(_) = value {
+        if let Value::Table(_) = value {  // you sure?
             if name == "package" {
                 let use_playbook = value.get("use_playbook").unwrap().as_bool().unwrap();
                 if use_playbook == false {
@@ -91,12 +97,12 @@ pub fn generate_config_from_toml() -> Result<ProtocolConfig, Box<dyn std::error:
                 continue;
             }
             if protocol_config_name != "" {
-                return Err("only one protocol can be defined in colink.toml".into());
+                return Err("only one protocol can be defined in colink.toml".into());  // not really...
             }
             protocol_config_name = name.clone();
         }
     }
-    let protocol_node = root_node.get(protocol_config_name.clone()).unwrap();
+    let protocol_node = root_node.get(protocol_config_name.clone()).unwrap();  // should be multiple?
     let ret_config = ProtocolConfig::new(protocol_node).unwrap();
     Ok(ret_config)
 }
