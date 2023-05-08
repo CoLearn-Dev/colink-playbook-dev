@@ -726,9 +726,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "colink-playbook"
+name = "colink-unifed-fedtree-playbook"
 version = "0.0.1"
 dependencies = [
+ "base64 0.13.1",
  "colink",
  "regex",
  "rust-crypto",

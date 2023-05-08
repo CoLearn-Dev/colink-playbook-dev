@@ -110,7 +110,6 @@ impl RuntimeFunc {
         let path = PathBuf::from(replaced_path.to_string());
         let parent = path.parent().unwrap();
         std::fs::create_dir_all(parent)?;
-        println!("{:?}, {:?}",file_name,replaced_path);
         if is_read {
             let file = std::fs::File::open(replaced_path.to_string()).unwrap();
             return Ok(Box::new(file));
@@ -199,6 +198,7 @@ impl RuntimeFunc {
         stdout_file: Option<&String>,
         stderr_file: Option<&String>,
         return_code: Option<&String>,
+        ignore_kill: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let mut child = process_map.remove(process_name).unwrap();
         let exit_status = match child.try_wait() {
@@ -210,32 +210,25 @@ impl RuntimeFunc {
                 return Err(e.into());
             }
         };
-        println!("{:?}",exit_status);
-        // if !exit_status.success(){
-        //     std::io::copy(&mut std::io::BufReader::new(child.stderr.unwrap()),&mut std::io::stderr())?;
-        //     std::io::copy(&mut std::io::BufReader::new(child.stdout.unwrap()),&mut std::io::stderr())?;
-        //     return Err("playbook call porcess error".into());
-        // }
-        // let output=child.wait_with_output().unwrap();
-        // println!("{:?}",output);
+        if !exit_status.success() && !(ignore_kill && exit_status.code().unwrap() == 9){
+            std::io::copy(&mut std::io::BufReader::new(child.stderr.unwrap()),&mut std::io::stderr())?;
+            std::io::copy(&mut std::io::BufReader::new(child.stdout.unwrap()),&mut std::io::stderr())?;
+            return Err("playbook call porcess error".into());
+        }
         if let Some(stdout_file) = stdout_file {
             let mut file = self
                 .gen_file_obj(&cl, stdout_file.to_string(), false)
                 .unwrap();
             let stdout = child.stdout.unwrap();
             std::io::copy(&mut std::io::BufReader::new(stdout), &mut file)?;
-            // file.write(&output.stdout)?;
         }
-        println!("debug stdout finish");
         if let Some(stderr_file) = stderr_file {
             let mut file = self
                 .gen_file_obj(&cl, stderr_file.to_string(), false)
                 .unwrap();
             let stderr = child.stderr.unwrap();
             std::io::copy(&mut std::io::BufReader::new(stderr), &mut file)?;
-            // file.write(&output.stderr)?;
         }
-        println!("debug stderr finish");
         if let Some(return_code) = return_code {
             let mut file = self
                 .gen_file_obj(&cl, return_code.to_string(), false)
@@ -243,7 +236,6 @@ impl RuntimeFunc {
             let return_code = exit_status.code().unwrap();
             file.write(format!("{}", return_code).as_bytes())?;
         }
-        println!("debug returncode finish");
         Ok(())
     }
 
@@ -289,9 +281,6 @@ impl RuntimeFunc {
         from_role: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let from_participants = RuntimeFunc::get_role_participants(participants, from_role.clone());
-        // if from_participants.len() != 0 {
-        //     return Err("playbook: use from role need to have only one match role".into());
-        // }
         let msg = cl
             .recv_variable(variable_name, &from_participants[0])
             .await?;
@@ -317,6 +306,64 @@ impl RuntimeFunc {
         file.read_to_end(&mut payload)?;
         let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
         cl.create_entry(&entry_name, payload.as_slice()).await?;
+        Ok(())
+    }
+
+    async fn delete_entry(
+        &self,
+        cl: &CoLink,
+        entry_name: &String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
+        cl.delete_entry(&entry_name).await?;
+        Ok(())
+    }
+
+    async fn update_entry(
+        &self,
+        cl: &CoLink,
+        entry_name: &String,
+        file: &String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let mut file = self
+            .gen_file_obj(&cl, file.to_string(), true)
+            .unwrap();
+        let mut payload = Vec::new();
+        file.read_to_end(&mut payload)?;
+        let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
+        cl.update_entry(&entry_name, payload.as_slice()).await?;
+        Ok(())
+    }
+
+    async fn read_entry(
+        &self,
+        cl: &CoLink,
+        entry_name: &String,
+        file: &String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let mut file = self
+            .gen_file_obj(&cl, file.to_string(), false)
+            .unwrap();
+        let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
+        let msg = cl.read_entry(&entry_name).await.unwrap();
+        file.write_all(msg.as_slice())?;
+        Ok(())
+    }
+
+    async fn read_or_wait_entry(
+        &self,
+        cl: &CoLink,
+        entry_name: &String,
+        file: &String,
+        timeout: &String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let mut file = self
+            .gen_file_obj(&cl, file.to_string(), false)
+            .unwrap();
+        let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
+        let timeout = timeout.parse::<u64>().unwrap();
+        let msg = cl.read_or_wait(&entry_name).await.unwrap();
+        file.write_all(msg.as_slice())?;
         Ok(())
     }
 
@@ -359,6 +406,7 @@ impl RuntimeFunc {
                 step_argv.get("stdout_file"),
                 step_argv.get("stderr_file"),
                 step_argv.get("return_code"),
+                true,
             )?;
             return Ok(());
         }
@@ -370,6 +418,7 @@ impl RuntimeFunc {
                 step_argv.get("stdout_file"),
                 step_argv.get("stderr_file"),
                 step_argv.get("return_code"),
+                false,
             )?;
             return Ok(());
         }
@@ -401,6 +450,31 @@ impl RuntimeFunc {
             self.create_entry(cl, create_entry.unwrap(), file).await?;
             return Ok(());
         }
+        let read_entry = step_argv.get("read_entry");
+        if read_entry != None {
+            let file = step_argv.get("file").unwrap();
+            self.read_entry(cl, read_entry.unwrap(), file).await?;
+            return Ok(());
+        }
+        let read_or_wait_entry = step_argv.get("read_or_wait_entry");
+        if read_or_wait_entry != None {
+            let file = step_argv.get("file").unwrap();
+            let timeout = step_argv.get("timeout").unwrap();
+            self.read_or_wait_entry(cl, read_or_wait_entry.unwrap(), file, timeout)
+                .await?;
+            return Ok(());
+        }
+        let delete_entry = step_argv.get("delete_entry");
+        if delete_entry != None {
+            self.delete_entry(cl, delete_entry.unwrap()).await?;
+            return Ok(());
+        }
+        let update_entry = step_argv.get("update_entry");
+        if update_entry != None {
+            let file = step_argv.get("file").unwrap();
+            self.update_entry(cl, update_entry.unwrap(), file).await?;
+            return Ok(());
+        }
         Err("playbook: no match step action".into())
     }
 }
@@ -421,14 +495,11 @@ impl ProtocolEntry for PlaybookRuntime {
         )?;
         let set_dir = RuntimeFunc::replace_path_value(&cl, &self.func.working_dir).unwrap();
         std::fs::create_dir_all(&set_dir)?;
-        println!("{:?}",set_dir);
         std::env::set_current_dir(set_dir)?;
         self.func.store_param(&cl, &param, &participants)?;
         let mut process_map: Box<std::collections::HashMap<String, std::process::Child>> =
             Box::new(std::collections::HashMap::new());
-        println!("{:?}, {:?}, {:?}",self.role.name,cl.get_user_id(),cl.get_task_id());
         for step in self.role.steps.clone() {
-            println!(" - {:?}",step);
             self.func
                 .decide_and_call(&cl, &mut process_map, participants.as_slice(), step)
                 .await?;

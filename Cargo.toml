@@ -1,13 +1,14 @@
 [package]
-name = "colink-playbook"
+name = "colink-unifed-fedtree-playbook"
 version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+base64 = "0.13"
 colink = "0.3.7"
-tokio = "1.24"
-tracing = "0.1"
-toml = "0.4.5"
 regex = "1.5.4"
 rust-crypto = "0.2.36"
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+tokio = "1.24"
+toml = "0.4.5"
+tracing = "0.1"
