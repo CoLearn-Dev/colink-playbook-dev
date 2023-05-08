@@ -26,23 +26,23 @@ You can define your protocol like this:
   name = "your po name"
 
 [your_po_pkg_name.roles]
-	[your_po_pkg_name.roles.your_role_name_0]
-		max_num = 10	# [optional] Limit the number of users with this role in this po
-		min_num = 1		# [optional] as previous
-		[your_po_pkg_name.roles.your_role_name_0.playbook]
-			workdir = "your role working path"	# [optional] If not defined, will set the po working path as role path
-			
-            [your_po_pkg_name.roles.your_role_name_0.playbook.steps]
-				# write actions here
-			
-			[your_po_pkg_name.roles.your_role_name_0.playbook.steps]
-				# write actions here
-			
-	[your_po_pkg_name.roles.your_role_name_1]
-		#define your other role action here
-	
-	[your_po_pkg_name.roles.your_role_name_2]
-		#define your other role action here
+  [your_po_pkg_name.roles.your_role_name_0]
+    max_num = 10	# [optional] Limit the number of users with this role in this po
+    min_num = 1		# [optional] as previous
+    [your_po_pkg_name.roles.your_role_name_0.playbook]
+      workdir = "your role working path"	# [optional] If not defined, will set the po working path as role path
+        
+      [your_po_pkg_name.roles.your_role_name_0.playbook.steps]
+        # write actions here
+        
+      [your_po_pkg_name.roles.your_role_name_0.playbook.steps]
+        # write actions here
+        
+[your_po_pkg_name.roles.your_role_name_1]
+  #define your other role action here
+
+[your_po_pkg_name.roles.your_role_name_2]
+  #define your other role action here
 			
 ```
 
@@ -90,8 +90,8 @@ cargo run -- --addr server_addr --jwt user_jwt
 
     ```toml
     [xx.steps]
-    step_name = "your sub-process name"
-    process = "your command here"
+      step_name = "your sub-process name"
+      process = "your command here"
     ```
 
   * force kill the sub-process
@@ -132,7 +132,7 @@ cargo run -- --addr server_addr --jwt user_jwt
 
     ```toml
     [xxx.steps]
-    	send_variable = "your variable name"
+      send_variable = "your variable name"
       file = "the file hold the value of your var"
       to_role = "the name of the role you want to send to"
     ```
@@ -143,7 +143,7 @@ cargo run -- --addr server_addr --jwt user_jwt
 
     ```toml
     [xxx.steps]
-    	recv_variable = "the name of variable"
+      recv_variable = "the name of variable"
       file = "the file to store the value of var"
       from_role = "the name of the role you want to secv from"
     ```
@@ -170,21 +170,21 @@ cargo run -- --addr server_addr --jwt user_jwt
 
     ```toml
     [xxx.steps]
-    	read_entry = "name of the entry to read"
-    	file = "file to store the content of entry"
+      read_entry = "name of the entry to read"
+      file = "file to store the content of entry"
     ```
 
   * delete entry
 
     ```toml
     [xxx.steps]
-    	delete_entry = "name of the entry to delete"
+      delete_entry = "name of the entry to delete"
     ```
 
   * read_or_wait entry
 
     ```toml
     [xxx.steps]
-    	read_or_wait_entry = "name of the entry to read"
-    	file = "file to store the content of entry"
+      read_or_wait_entry = "name of the entry to read"
+      file = "file to store the content of entry"
     ```
