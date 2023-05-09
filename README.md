@@ -25,24 +25,24 @@ You can define your protocol like this:
   workdir = "your po working path"
   name = "your po name"
 
-[your_po_pkg_name.roles]
-  [your_po_pkg_name.roles.your_role_name_0]
-    max_num = 10	# [optional] Limit the number of users with this role in this po
-    min_num = 1		# [optional] as previous
-    [your_po_pkg_name.roles.your_role_name_0.playbook]
-      workdir = "your role working path"	# [optional] If not defined, will set the po working path as role path
-        
-      [your_po_pkg_name.roles.your_role_name_0.playbook.steps]
-        # write actions here
-        
-      [your_po_pkg_name.roles.your_role_name_0.playbook.steps]
-        # write actions here
-        
-[your_po_pkg_name.roles.your_role_name_1]
-  #define your other role action here
+  [your_po_pkg_name.roles]
+    [your_po_pkg_name.roles.your_role_name_0]
+      max_num = 10	# [optional] Limit the number of users with this role in this po
+      min_num = 1		# [optional] as previous
+      [your_po_pkg_name.roles.your_role_name_0.playbook]
+        workdir = "your role working path"	# [optional] If not defined, will set the po working path as role path
+          
+        [your_po_pkg_name.roles.your_role_name_0.playbook.steps]
+          # write actions here
+          
+        [your_po_pkg_name.roles.your_role_name_0.playbook.steps]
+          # write actions here
+          
+  [your_po_pkg_name.roles.your_role_name_1]
+    #define your other role action here
 
-[your_po_pkg_name.roles.your_role_name_2]
-  #define your other role action here
+  [your_po_pkg_name.roles.your_role_name_2]
+    #define your other role action here
 			
 ```
 
@@ -135,6 +135,7 @@ cargo run -- --addr server_addr --jwt user_jwt
       send_variable = "your variable name"
       file = "the file hold the value of your var"
       to_role = "the name of the role you want to send to"
+      index = 0 # [optional] not set for all ones
     ```
 
   * receive variable
@@ -146,6 +147,7 @@ cargo run -- --addr server_addr --jwt user_jwt
       recv_variable = "the name of variable"
       file = "the file to store the value of var"
       from_role = "the name of the role you want to secv from"
+      index = 0  # [optional] the index of the roles matched in participants
     ```
 
 * entry actions of CoLink

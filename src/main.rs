@@ -1,5 +1,3 @@
-#![allow(unused_variables)]
-
 mod config_process;
 use config_process::generate_config_from_toml;
 pub mod runtime;
@@ -18,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
             name,
             Box::new(PlaybookRuntime {
                 func: RuntimeFunc::new(role.workdir.clone()),
-                role: role,
+                role,
             }),
         );
     }

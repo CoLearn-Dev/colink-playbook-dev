@@ -25,7 +25,7 @@ pub struct RuntimeFunc {
 impl RuntimeFunc {
     pub fn new(working_dir: String) -> RuntimeFunc {
         RuntimeFunc {
-            working_dir: working_dir,
+            working_dir,
             process_map: Mutex::new(std::collections::HashMap::new()),
         }
     }
@@ -118,11 +118,11 @@ impl RuntimeFunc {
         let parent = path.parent().unwrap();
         std::fs::create_dir_all(parent)?;
         if is_read {
-            let file = std::fs::File::open(replaced_path.to_string()).unwrap();
-            return Ok(Box::new(file));
+            let file = std::fs::File::open(&replaced_path).unwrap();
+            Ok(Box::new(file))
         } else {
-            let file = std::fs::File::create(replaced_path.to_string()).unwrap();
-            return Ok(Box::new(file));
+            let file = std::fs::File::create(&replaced_path).unwrap();
+            Ok(Box::new(file))
         }
     }
 
@@ -170,7 +170,7 @@ impl RuntimeFunc {
     fn simple_run(
         &self,
         cl: &CoLink,
-        command_str: &String,
+        command_str: &str,
     ) -> Result<Output, Box<dyn std::error::Error + Send + Sync + 'static>> {
         let command_re = RuntimeFunc::replace_path_value(cl, command_str)?;
         let mut bind = std::process::Command::new("bash");
@@ -183,8 +183,8 @@ impl RuntimeFunc {
     async fn sign_process_and_run(
         &self,
         cl: &CoLink,
-        process_name: &String,
-        process_str: &String,
+        process_name: &str,
+        process_str: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let command_re = RuntimeFunc::replace_path_value(cl, process_str)?;
         let mut bind = std::process::Command::new("bash");
@@ -195,7 +195,7 @@ impl RuntimeFunc {
         self.process_map
             .lock()
             .await
-            .insert(process_name.clone(), command.spawn()?);
+            .insert(process_name.to_string(), command.spawn()?);
         Ok(())
     }
 
@@ -218,7 +218,7 @@ impl RuntimeFunc {
                 return Err(e.into());
             }
         };
-        if !exit_status.success() && !(ignore_kill && exit_status.signal().unwrap() == 9) {
+        if !(exit_status.success() || (ignore_kill && exit_status.signal().unwrap() == 9)) {
             std::io::copy(
                 &mut std::io::BufReader::new(child.stderr.unwrap()),
                 &mut std::io::stderr(),
@@ -231,24 +231,24 @@ impl RuntimeFunc {
         }
         if let Some(stdout_file) = stdout_file {
             let mut file = self
-                .gen_file_obj(&cl, stdout_file.to_string(), false)
+                .gen_file_obj(cl, stdout_file.to_string(), false)
                 .unwrap();
             let stdout = child.stdout.unwrap();
             std::io::copy(&mut std::io::BufReader::new(stdout), &mut file)?;
         }
         if let Some(stderr_file) = stderr_file {
             let mut file = self
-                .gen_file_obj(&cl, stderr_file.to_string(), false)
+                .gen_file_obj(cl, stderr_file.to_string(), false)
                 .unwrap();
             let stderr = child.stderr.unwrap();
             std::io::copy(&mut std::io::BufReader::new(stderr), &mut file)?;
         }
         if let Some(return_code) = return_code {
             let mut file = self
-                .gen_file_obj(&cl, return_code.to_string(), false)
+                .gen_file_obj(cl, return_code.to_string(), false)
                 .unwrap();
             let return_code = exit_status.code().unwrap();
-            file.write(format!("{}", return_code).as_bytes())?;
+            file.write_all(format!("{}", return_code).as_bytes())?;
         }
         Ok(())
     }
@@ -270,19 +270,19 @@ impl RuntimeFunc {
         &self,
         cl: &CoLink,
         participants: &[Participant],
-        variable_name: &String,
-        variable_file: &String,
-        to_role: &String,
+        variable_name: &str,
+        variable_file: &str,
+        to_role: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let mut file = self
-            .gen_file_obj(&cl, variable_file.to_string(), true)
+            .gen_file_obj(cl, variable_file.to_string(), true)
             .unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
         cl.send_variable(
             variable_name,
             payload.as_slice(),
-            RuntimeFunc::get_role_participants(participants, to_role.clone()).as_slice(),
+            RuntimeFunc::get_role_participants(participants, to_role.to_string()).as_slice(),
         )
         .await?;
         Ok(())
@@ -292,11 +292,11 @@ impl RuntimeFunc {
         &self,
         cl: &CoLink,
         participants: &[Participant],
-        variable_name: &String,
+        variable_name: &str,
         variable_file: Option<&String>,
-        from_role: &String,
+        from_role: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let from_participants = RuntimeFunc::get_role_participants(participants, from_role.clone());
+        let from_participants = RuntimeFunc::get_role_participants(participants, from_role.to_string());
         let msg = cl
             .recv_variable(variable_name, &from_participants[0])
             .await?;
@@ -312,13 +312,13 @@ impl RuntimeFunc {
     async fn create_entry(
         &self,
         cl: &CoLink,
-        entry_name: &String,
+        entry_name: &str,
         file: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self.gen_file_obj(&cl, file.to_string(), true).unwrap();
+        let mut file = self.gen_file_obj(cl, file.to_string(), true).unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
-        let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
+        let entry_name = RuntimeFunc::replace_path_value(cl, entry_name).unwrap();
         cl.create_entry(&entry_name, payload.as_slice()).await?;
         Ok(())
     }
@@ -326,9 +326,9 @@ impl RuntimeFunc {
     async fn delete_entry(
         &self,
         cl: &CoLink,
-        entry_name: &String,
+        entry_name: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
+        let entry_name = RuntimeFunc::replace_path_value(cl, entry_name).unwrap();
         cl.delete_entry(&entry_name).await?;
         Ok(())
     }
@@ -336,13 +336,13 @@ impl RuntimeFunc {
     async fn update_entry(
         &self,
         cl: &CoLink,
-        entry_name: &String,
-        file: &String,
+        entry_name: &str,
+        file: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self.gen_file_obj(&cl, file.to_string(), true).unwrap();
+        let mut file = self.gen_file_obj(cl, file.to_string(), true).unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
-        let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
+        let entry_name = RuntimeFunc::replace_path_value(cl, entry_name).unwrap();
         cl.update_entry(&entry_name, payload.as_slice()).await?;
         Ok(())
     }
@@ -350,11 +350,11 @@ impl RuntimeFunc {
     async fn read_entry(
         &self,
         cl: &CoLink,
-        entry_name: &String,
+        entry_name: &str,
         file: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self.gen_file_obj(&cl, file.to_string(), false).unwrap();
-        let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
+        let mut file = self.gen_file_obj(cl, file.to_string(), false).unwrap();
+        let entry_name = RuntimeFunc::replace_path_value(cl, entry_name).unwrap();
         let msg = cl.read_entry(&entry_name).await.unwrap();
         file.write_all(msg.as_slice())?;
         Ok(())
@@ -363,13 +363,11 @@ impl RuntimeFunc {
     async fn read_or_wait_entry(
         &self,
         cl: &CoLink,
-        entry_name: &String,
+        entry_name: &str,
         file: &String,
-        timeout: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self.gen_file_obj(&cl, file.to_string(), false).unwrap();
-        let entry_name = RuntimeFunc::replace_path_value(&cl, &entry_name.clone()).unwrap();
-        let timeout = timeout.parse::<u64>().unwrap();
+        let mut file = self.gen_file_obj(cl, file.to_string(), false).unwrap();
+        let entry_name = RuntimeFunc::replace_path_value(cl, entry_name).unwrap();
         let msg = cl.read_or_wait(&entry_name).await.unwrap();
         file.write_all(msg.as_slice())?;
         Ok(())
@@ -384,7 +382,7 @@ impl RuntimeFunc {
         // check if
         let if_statement = step_argv.get("if");
         if let Some(if_command) = if_statement {
-            let result = self.simple_run(&cl, if_command)?;
+            let result = self.simple_run(cl, if_command)?;
             if !result.status.success() {
                 return Ok(());
             }
@@ -394,18 +392,18 @@ impl RuntimeFunc {
         let process_sign = step_argv.get("process");
         let process_kill = step_argv.get("process_kill");
         let process_wait = step_argv.get("process_wait");
-        if process_sign != None {
-            if step_name == None {
+        if process_sign.is_some() {
+            if step_name.is_none() {
                 return Err("playbook: `process` need `step_name`".into());
             } else {
-                self.sign_process_and_run(&cl, step_name.unwrap(), process_sign.unwrap())
+                self.sign_process_and_run(cl, step_name.unwrap(), process_sign.unwrap())
                     .await?;
-                if process_kill == None && process_wait == None {
+                if process_kill.is_none() && process_wait.is_none() {
                     return Ok(());
                 }
             }
         }
-        if process_kill != None {
+        if process_kill.is_some() {
             self.process_kill(process_kill.unwrap()).await?;
             self.communicate_with_process(
                 cl,
@@ -418,7 +416,7 @@ impl RuntimeFunc {
             .await?;
             return Ok(());
         }
-        if process_wait != None {
+        if process_wait.is_some() {
             self.communicate_with_process(
                 cl,
                 process_wait.unwrap(),
@@ -431,7 +429,7 @@ impl RuntimeFunc {
             return Ok(());
         }
         let send_variable_name = step_argv.get("send_variable");
-        if send_variable_name != None {
+        if send_variable_name.is_some() {
             let file = step_argv.get("file").unwrap();
             let to_role = step_argv.get("to_role").unwrap();
             self.send_variable(cl, participants, send_variable_name.unwrap(), file, to_role)
@@ -439,7 +437,7 @@ impl RuntimeFunc {
             return Ok(());
         }
         let recv_variable_name = step_argv.get("recv_variable");
-        if recv_variable_name != None {
+        if recv_variable_name.is_some() {
             let file = step_argv.get("file");
             let from_role = step_argv.get("from_role").unwrap();
             self.recv_variable(
@@ -453,32 +451,31 @@ impl RuntimeFunc {
             return Ok(());
         }
         let create_entry = step_argv.get("create_entry");
-        if create_entry != None {
+        if create_entry.is_some() {
             let file = step_argv.get("file").unwrap();
             self.create_entry(cl, create_entry.unwrap(), file).await?;
             return Ok(());
         }
         let read_entry = step_argv.get("read_entry");
-        if read_entry != None {
+        if read_entry.is_some() {
             let file = step_argv.get("file").unwrap();
             self.read_entry(cl, read_entry.unwrap(), file).await?;
             return Ok(());
         }
         let read_or_wait_entry = step_argv.get("read_or_wait_entry");
-        if read_or_wait_entry != None {
+        if read_or_wait_entry.is_some() {
             let file = step_argv.get("file").unwrap();
-            let timeout = step_argv.get("timeout").unwrap();
-            self.read_or_wait_entry(cl, read_or_wait_entry.unwrap(), file, timeout)
+            self.read_or_wait_entry(cl, read_or_wait_entry.unwrap(), file)
                 .await?;
             return Ok(());
         }
         let delete_entry = step_argv.get("delete_entry");
-        if delete_entry != None {
+        if delete_entry.is_some() {
             self.delete_entry(cl, delete_entry.unwrap()).await?;
             return Ok(());
         }
         let update_entry = step_argv.get("update_entry");
-        if update_entry != None {
+        if update_entry.is_some() {
             let file = step_argv.get("file").unwrap();
             self.update_entry(cl, update_entry.unwrap(), file).await?;
             return Ok(());

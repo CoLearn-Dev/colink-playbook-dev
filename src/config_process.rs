@@ -43,10 +43,10 @@ impl Role {
             steps.push(argvs);
         }
         Ok(Role {
-            name: name,
-            max_num: max_num,
-            min_num: min_num,
-            steps: steps,
+            name,
+            max_num,
+            min_num,
+            steps,
             workdir: workdir.to_string() + "/",
         })
     }
@@ -71,7 +71,7 @@ impl ProtocolConfig {
         }
         Ok(ProtocolConfig {
             protocol_name: name.to_string(),
-            roles: roles,
+            roles,
         })
     }
 }
@@ -85,18 +85,18 @@ pub fn generate_config_from_toml() -> Result<ProtocolConfig, Box<dyn std::error:
         if let Value::Table(_) = value {
             if name == "package" {
                 let use_playbook = value.get("use_playbook").unwrap().as_bool().unwrap();
-                if use_playbook == false {
+                if !use_playbook {
                     return Err("use_playbook need to be true to use playbook module".into());
                 }
                 continue;
             }
-            if protocol_config_name != "" {
+            if !protocol_config_name.is_empty() {
                 return Err("only one protocol can be defined in colink.toml".into());
             }
             protocol_config_name = name.clone();
         }
     }
-    let protocol_node = root_node.get(protocol_config_name.clone()).unwrap();
+    let protocol_node = root_node.get(protocol_config_name).unwrap();
     let ret_config = ProtocolConfig::new(protocol_node).unwrap();
     Ok(ret_config)
 }
