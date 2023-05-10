@@ -79,7 +79,7 @@ cargo run -- --addr server_addr --jwt user_jwt
   you can use this statement to add a run condition for any step
 
   ```toml
-  if = "a bash command"	# example: `grep -q '0' xx.txt`
+  if_cond = "a bash command"	# example: `grep -q '0' xx.txt`
   ```
 
   this action will run the bash command and get its return code. If return `0`, will run this step, otherwise, this step will be skipped.

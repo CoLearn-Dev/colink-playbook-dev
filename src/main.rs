@@ -1,7 +1,8 @@
-mod config_process;
-use config_process::generate_config_from_toml;
-pub mod runtime;
-use runtime::{PlaybookRuntime, RuntimeFunc};
+mod spec_parser;
+use spec_parser::generate_spec_from_toml;
+mod interpreter;
+use interpreter::Context;
+use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     let (cl, keep_alive_when_disconnect, vt_public_addr) = colink::_colink_parse_args();
@@ -9,16 +10,14 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         String,
         Box<dyn colink::ProtocolEntry + Send + Sync>,
     > = std::collections::HashMap::new();
-    let protocol_config = generate_config_from_toml().unwrap();
-    for role in protocol_config.roles {
-        let name = protocol_config.protocol_name.clone() + ":" + role.name.as_str();
-        user_funcs.insert(
-            name,
-            Box::new(PlaybookRuntime {
-                func: RuntimeFunc::new(role.workdir.clone()),
-                role,
-            }),
-        );
+    let toml_str = fs::read_to_string("colink.toml").unwrap();
+    let protocol_spec_vec = generate_spec_from_toml(&toml_str).unwrap();
+    for protocol_spec in protocol_spec_vec {
+        for role in protocol_spec.roles {
+            let name = protocol_spec.protocol_name.clone() + ":" + role.name.as_str();
+            let context = Context::new(role, &protocol_spec.workdir);
+            user_funcs.insert(name, Box::new(context));
+        }
     }
     colink::_protocol_start(cl, user_funcs, keep_alive_when_disconnect, vt_public_addr)?;
     Ok(())

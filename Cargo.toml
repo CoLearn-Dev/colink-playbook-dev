@@ -1,5 +1,5 @@
 [package]
-name = "colink-unifed-fedtree-playbook"
+name = "colink-playbook-dev"
 version = "0.0.1"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 base64 = "0.13"
 colink = "0.3.7"
 regex = "1.5.4"
-rust-crypto = "0.2.36"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 tokio = "1.24"
 toml = "0.4.5"
