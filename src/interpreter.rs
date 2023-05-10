@@ -297,10 +297,19 @@ impl Context {
         variable_name: &str,
         variable_file: &str,
         to_role: &str,
+        index: Option<usize>
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let mut file = self.open(variable_file.to_string()).await.unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
+        let total_participants = Context::get_role_participants(
+            self.participants.lock().await.as_ref().unwrap(),
+            to_role.to_string(),
+        );
+        let participants = match index{
+            Some(index) => vec![total_participants[index].clone()],
+            None => total_participants
+        };
         self.cl
             .lock()
             .await
@@ -309,11 +318,7 @@ impl Context {
             .send_variable(
                 variable_name,
                 payload.as_slice(),
-                Context::get_role_participants(
-                    self.participants.lock().await.as_ref().unwrap(),
-                    to_role.to_string(),
-                )
-                .as_slice(),
+                participants.as_slice(),
             )
             .await?;
         Ok(())
@@ -324,6 +329,7 @@ impl Context {
         variable_name: &str,
         variable_file: &Option<String>,
         from_role: &str,
+        index: usize,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let from_participants = Context::get_role_participants(
             self.participants.lock().await.as_ref().unwrap(),
@@ -335,7 +341,7 @@ impl Context {
             .await
             .as_ref()
             .unwrap()
-            .recv_variable(variable_name, &from_participants.as_slice()[0])
+            .recv_variable(variable_name, &from_participants.as_slice()[index])
             .await?;
         if let Some(store_to_file) = variable_file {
             let mut file = self.create(store_to_file.to_string()).await.unwrap();
@@ -485,7 +491,7 @@ impl Context {
         if let Some(send_variable_name) = &step_spec.send_variable {
             let file = step_spec.file.as_ref().unwrap();
             let to_role = step_spec.to_role.as_ref().unwrap();
-            ctx.send_variable(send_variable_name, file, to_role).await?;
+            ctx.send_variable(send_variable_name, file, to_role, step_spec.index.map(|x| x as usize)).await?;
             return Ok(());
         }
         if let Some(recv_variable_name) = &step_spec.recv_variable {
@@ -493,6 +499,7 @@ impl Context {
                 recv_variable_name,
                 &step_spec.file,
                 step_spec.from_role.as_ref().unwrap(),
+                step_spec.index.unwrap() as usize,
             )
             .await?;
             return Ok(());
