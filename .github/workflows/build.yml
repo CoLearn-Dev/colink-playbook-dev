@@ -1,0 +1,13 @@
+on:
+  release:
+    types: [released]
+
+name: Build
+
+jobs:
+  build:
+    uses: CoLearn-Dev/colink-protocol-inventory-workflow-templates/.github/workflows/rust.yml@main
+    with:
+      protocol_name: playbook
+      package_name: colink-playbook
+      build_only: true

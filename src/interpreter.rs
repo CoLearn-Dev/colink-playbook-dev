@@ -210,6 +210,10 @@ impl Context {
         let mut bind = std::process::Command::new("bash");
         let command = bind.arg("-c").arg(command_re);
         command.current_dir(self.replace_template(&self.working_dir).await.unwrap());
+        let core_addr = self.cl.lock().await.as_ref().unwrap().get_core_addr().unwrap();
+        let user_jwt = self.cl.lock().await.as_ref().unwrap().get_jwt().unwrap();
+        command.env("COLINK_CORE_ADDR", core_addr)
+        .env("COLINK_JWT", user_jwt);
         let output = command.output()?;
         Ok(output)
     }
