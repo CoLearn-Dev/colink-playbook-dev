@@ -4,10 +4,49 @@ on:
 
 name: Build
 
+env:
+  package_name: colink-playbook-dev
+
 jobs:
   build:
-    uses: CoLearn-Dev/colink-protocol-inventory-workflow-templates/.github/workflows/rust.yml@main
-    with:
-      protocol_name: playbook
-      package_name: colink-playbook
-      build_only: true
+    strategy:
+      matrix:
+        platform: [linux-x86_64, macos-x86_64]
+        include:
+          - platform: linux-x86_64
+            ci_image: ubuntu-20.04
+            cargo_target: x86_64-unknown-linux-gnu
+          - platform: macos-x86_64
+            ci_image: macos-12
+            cargo_target: x86_64-apple-darwin
+    runs-on: ${{ matrix.ci_image }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: Build
+        run: cargo build --release --target ${{ matrix.cargo_target }}
+      - name: Pack
+        run: |
+          cp target/${{ matrix.cargo_target }}/release/$package_name ./
+          tar -zcvf $package_name-${{ matrix.platform }}.tar.gz $package_name
+      - name: Upload Release Asset
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs').promises;
+            github.rest.repos.uploadReleaseAsset({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: ${{ github.event.release.id }},
+              name: '$package_name-${{ matrix.platform }}.tar.gz',
+              data: await fs.readFile('$package_name-${{ matrix.platform }}.tar.gz')
+            });
