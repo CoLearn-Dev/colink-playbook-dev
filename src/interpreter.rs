@@ -311,6 +311,7 @@ impl Context {
         to_role: &str,
         index: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let variable_name = self.replace_template(variable_name).await?;
         let mut file = self.open(variable_file.to_string()).await.unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
@@ -327,7 +328,7 @@ impl Context {
             .await
             .as_ref()
             .unwrap()
-            .send_variable(variable_name, payload.as_slice(), participants.as_slice())
+            .send_variable(&variable_name, payload.as_slice(), participants.as_slice())
             .await?;
         Ok(())
     }
@@ -339,6 +340,7 @@ impl Context {
         from_role: &str,
         index: usize,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let variable_name = self.replace_template(variable_name).await?;
         let from_participants = Context::get_role_participants(
             self.participants.lock().await.as_ref().unwrap(),
             from_role.to_string(),
@@ -349,7 +351,7 @@ impl Context {
             .await
             .as_ref()
             .unwrap()
-            .recv_variable(variable_name, &from_participants.as_slice()[index])
+            .recv_variable(&variable_name, &from_participants.as_slice()[index])
             .await?;
         if let Some(store_to_file) = variable_file {
             let mut file = self.create(store_to_file.to_string()).await.unwrap();
