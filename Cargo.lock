@@ -548,6 +548,7 @@ name = "colink-playbook-dev"
 version = "0.1.0"
 dependencies = [
  "base64 0.13.1",
+ "clap",
  "colink",
  "regex",
  "serde",
@@ -555,6 +556,7 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
