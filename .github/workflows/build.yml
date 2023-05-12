@@ -35,9 +35,7 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.cargo_target }}
       - name: Pack
-        run: |
-          cp target/${{ matrix.cargo_target }}/release/$package_name ./
-          tar -zcvf $package_name-${{ matrix.platform }}.tar.gz $package_name
+        run: cp target/${{ matrix.cargo_target }}/release/colink-playbook-dev ./colink-playbook-${{ matrix.platform }}
       - name: Upload Release Asset
         uses: actions/github-script@v6
         with:
@@ -47,6 +45,6 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: ${{ github.event.release.id }},
-              name: '$package_name-${{ matrix.platform }}.tar.gz',
-              data: await fs.readFile('$package_name-${{ matrix.platform }}.tar.gz')
+              name: 'colink-playbook-${{ matrix.platform }}',
+              data: await fs.readFile('colink-playbook-${{ matrix.platform }}')
             });
