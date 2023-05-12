@@ -210,10 +210,18 @@ impl Context {
         let mut bind = std::process::Command::new("bash");
         let command = bind.arg("-c").arg(command_re);
         command.current_dir(self.replace_template(&self.working_dir).await.unwrap());
-        let core_addr = self.cl.lock().await.as_ref().unwrap().get_core_addr().unwrap();
+        let core_addr = self
+            .cl
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .get_core_addr()
+            .unwrap();
         let user_jwt = self.cl.lock().await.as_ref().unwrap().get_jwt().unwrap();
-        command.env("COLINK_CORE_ADDR", core_addr)
-        .env("COLINK_JWT", user_jwt);
+        command
+            .env("COLINK_CORE_ADDR", core_addr)
+            .env("COLINK_JWT", user_jwt);
         let output = command.output()?;
         Ok(output)
     }
@@ -301,7 +309,7 @@ impl Context {
         variable_name: &str,
         variable_file: &str,
         to_role: &str,
-        index: Option<usize>
+        index: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let mut file = self.open(variable_file.to_string()).await.unwrap();
         let mut payload = Vec::new();
@@ -310,20 +318,16 @@ impl Context {
             self.participants.lock().await.as_ref().unwrap(),
             to_role.to_string(),
         );
-        let participants = match index{
+        let participants = match index {
             Some(index) => vec![total_participants[index].clone()],
-            None => total_participants
+            None => total_participants,
         };
         self.cl
             .lock()
             .await
             .as_ref()
             .unwrap()
-            .send_variable(
-                variable_name,
-                payload.as_slice(),
-                participants.as_slice(),
-            )
+            .send_variable(variable_name, payload.as_slice(), participants.as_slice())
             .await?;
         Ok(())
     }
@@ -495,7 +499,13 @@ impl Context {
         if let Some(send_variable_name) = &step_spec.send_variable {
             let file = step_spec.file.as_ref().unwrap();
             let to_role = step_spec.to_role.as_ref().unwrap();
-            ctx.send_variable(send_variable_name, file, to_role, step_spec.index.map(|x| x as usize)).await?;
+            ctx.send_variable(
+                send_variable_name,
+                file,
+                to_role,
+                step_spec.index.map(|x| x as usize),
+            )
+            .await?;
             return Ok(());
         }
         if let Some(recv_variable_name) = &step_spec.recv_variable {
