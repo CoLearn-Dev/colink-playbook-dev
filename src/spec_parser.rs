@@ -3,11 +3,13 @@ use toml::Value;
 
 #[derive(Deserialize)]
 pub struct StepSpec {
-    pub if_cond: Option<String>,
+    #[serde(rename = "if")]
+    pub _if: Option<String>,
     pub step_name: Option<String>,
     pub process: Option<String>,
     pub process_wait: Option<String>,
     pub process_kill: Option<String>,
+    pub check_exit_code: Option<i32>,
     pub send_variable: Option<String>,
     pub recv_variable: Option<String>,
     pub from_role: Option<String>,
@@ -16,7 +18,7 @@ pub struct StepSpec {
     pub file: Option<String>,
     pub stdout_file: Option<String>,
     pub stderr_file: Option<String>,
-    pub return_code: Option<String>,
+    pub exit_code: Option<String>,
     pub create_entry: Option<String>,
     pub update_entry: Option<String>,
     pub delete_entry: Option<String>,
@@ -93,10 +95,10 @@ impl ProtocolSpec {
 
 type PackageSpec = Vec<ProtocolSpec>;
 
-pub fn generate_spec_from_toml(toml_str: &str) -> Result<PackageSpec, Box<dyn std::error::Error>> {
+pub fn parse_spec_from_toml(toml_str: &str) -> Result<PackageSpec, Box<dyn std::error::Error>> {
     let root_node = toml_str.parse::<Value>().unwrap();
     let root_table = root_node.as_table().unwrap();
-    let mut protocol_spec_vec: PackageSpec = Vec::new();
+    let mut package_spec: PackageSpec = Vec::new();
     for (name, value) in root_table {
         if value.as_table().is_some() {
             if name == "package" {
@@ -109,9 +111,9 @@ pub fn generate_spec_from_toml(toml_str: &str) -> Result<PackageSpec, Box<dyn st
                 }
                 continue;
             } else {
-                protocol_spec_vec.push(ProtocolSpec::new(value).unwrap());
+                package_spec.push(ProtocolSpec::new(value).unwrap());
             }
         }
     }
-    Ok(protocol_spec_vec)
+    Ok(package_spec)
 }

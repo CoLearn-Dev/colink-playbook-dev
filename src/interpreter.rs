@@ -2,75 +2,14 @@ use std::{
     io::{Read, Write},
     os::unix::process::ExitStatusExt,
     path::PathBuf,
-    process::{Output, Stdio},
+    process::Stdio,
 };
 
+use crate::helper::replace_str;
 use crate::spec_parser::{RoleSpec, StepSpec};
 use colink::{CoLink, Participant, ProtocolEntry};
 use serde_json::json;
 use tokio::sync::Mutex;
-
-mod helper {
-    use regex::Regex;
-    use std::env;
-
-    pub fn replace_str(
-        to_replace: &str,
-        values_table: std::collections::HashMap<String, String>,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut path = String::new();
-        let mut i = 0;
-        while i < to_replace.len() {
-            match to_replace[i..].find("{{") {
-                Some(start) => {
-                    path.push_str(&to_replace[i..i + start]);
-                    let end = to_replace[i + start + 2..].find("}}").unwrap() + i + start + 2;
-                    let var_string = &to_replace[i + start + 2..end].trim();
-                    let substring_start = var_string.find('[');
-                    match substring_start {
-                        Some(substring_start) => {
-                            let substring_end = var_string.find(']').unwrap();
-                            let var_name = &var_string[..substring_start];
-                            let indexes = &var_string[substring_start + 1..substring_end];
-                            let values = values_table.get(var_name).unwrap();
-                            let values = values.chars().collect::<Vec<char>>();
-                            if indexes.is_empty() {
-                                path.push_str(&values.iter().collect::<String>());
-                            } else if indexes.contains("..") {
-                                let mut indexes = indexes.split("..");
-                                let start = indexes.next().unwrap().parse::<usize>().unwrap_or(0);
-                                let end = indexes
-                                    .next()
-                                    .unwrap_or("")
-                                    .parse::<usize>()
-                                    .unwrap_or(values.len());
-                                path.push_str(&values[start..end].iter().collect::<String>());
-                            } else {
-                                let index = indexes.parse::<usize>().unwrap();
-                                path.push(values[index]);
-                            }
-                            i = end + 2;
-                        }
-                        None => {
-                            let var_name = &var_string[..];
-                            let values = values_table.get(var_name).unwrap();
-                            path.push_str(&values[..]);
-                            i = end + 2;
-                        }
-                    }
-                }
-                None => {
-                    path.push_str(&to_replace[i..]);
-                    break;
-                }
-            }
-        }
-        let re = Regex::new(r"\$(\w+)").unwrap();
-        let replaced_path =
-            re.replace_all(&path, |caps: &regex::Captures| env::var(&caps[1]).unwrap());
-        Ok(replaced_path.to_string())
-    }
-}
 
 pub struct Context {
     role: RoleSpec,
@@ -107,7 +46,7 @@ impl Context {
         role_participants
     }
 
-    async fn replace_template(
+    async fn rander_template(
         &self,
         to_replace: &str,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -127,7 +66,7 @@ impl Context {
             .unwrap()
             .get_task_id()
             .unwrap();
-        helper::replace_str(
+        replace_str(
             to_replace,
             std::collections::HashMap::from([
                 ("user_id".to_string(), user_id),
@@ -140,7 +79,7 @@ impl Context {
         &self,
         file_name: String,
     ) -> Result<Box<std::fs::File>, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let replaced_path = self.replace_template(&file_name).await.unwrap();
+        let replaced_path = self.rander_template(&file_name).await.unwrap();
         let file = std::fs::File::open(replaced_path).unwrap();
         Ok(Box::new(file))
     }
@@ -149,7 +88,7 @@ impl Context {
         &self,
         file_name: String,
     ) -> Result<Box<std::fs::File>, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let replaced_path = self.replace_template(&file_name).await.unwrap();
+        let replaced_path = self.rander_template(&file_name).await.unwrap();
         let path = PathBuf::from(replaced_path.to_string());
         let parent = path.parent().unwrap();
         std::fs::create_dir_all(parent)?;
@@ -202,14 +141,41 @@ impl Context {
         Ok(())
     }
 
-    async fn run_and_wait(
+    // async fn run_and_wait(
+    //     &self,
+    //     command_str: &str,
+    // ) -> Result<Output, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    //     let command_re = self.rander_template(command_str).await?;
+    //     let mut bind = std::process::Command::new("bash");
+    //     let command = bind.arg("-c").arg(command_re);
+    //     command.current_dir(self.rander_template(&self.working_dir).await.unwrap());
+    //     let core_addr = self
+    //         .cl
+    //         .lock()
+    //         .await
+    //         .as_ref()
+    //         .unwrap()
+    //         .get_core_addr()
+    //         .unwrap();
+    //     let user_jwt = self.cl.lock().await.as_ref().unwrap().get_jwt().unwrap();
+    //     command
+    //         .env("COLINK_CORE_ADDR", core_addr)
+    //         .env("COLINK_JWT", user_jwt);
+    //     let output = command.output()?;
+    //     Ok(output)
+    // }
+
+    async fn run(
         &self,
-        command_str: &str,
-    ) -> Result<Output, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let command_re = self.replace_template(command_str).await?;
+        process_name: &str,
+        process_str: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let command_re = self.rander_template(process_str).await?;
         let mut bind = std::process::Command::new("bash");
         let command = bind.arg("-c").arg(command_re);
-        command.current_dir(self.replace_template(&self.working_dir).await.unwrap());
+        command.current_dir(self.rander_template(&self.working_dir).await.unwrap());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
         let core_addr = self
             .cl
             .lock()
@@ -222,21 +188,6 @@ impl Context {
         command
             .env("COLINK_CORE_ADDR", core_addr)
             .env("COLINK_JWT", user_jwt);
-        let output = command.output()?;
-        Ok(output)
-    }
-
-    async fn run(
-        &self,
-        process_name: &str,
-        process_str: &str,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let command_re = self.replace_template(process_str).await?;
-        let mut bind = std::process::Command::new("bash");
-        let command = bind.arg("-c").arg(command_re);
-        command.current_dir(self.replace_template(&self.working_dir).await.unwrap());
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
         self.process_map
             .lock()
             .await
@@ -249,9 +200,8 @@ impl Context {
         process_name: &String,
         stdout_file: &Option<String>,
         stderr_file: &Option<String>,
-        return_code: &Option<String>,
-        ignore_kill: bool,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+        exit_code: &Option<String>,
+    ) -> Result<i32, Box<dyn std::error::Error + Send + Sync + 'static>> {
         let mut child = self.process_map.lock().await.remove(process_name).unwrap();
         let exit_status = match child.try_wait() {
             Ok(Some(status)) => status,
@@ -262,17 +212,6 @@ impl Context {
                 return Err(e.into());
             }
         };
-        if !(exit_status.success() || (ignore_kill && exit_status.signal().unwrap() == 9)) {
-            std::io::copy(
-                &mut std::io::BufReader::new(child.stderr.unwrap()),
-                &mut std::io::stderr(),
-            )?;
-            std::io::copy(
-                &mut std::io::BufReader::new(child.stdout.unwrap()),
-                &mut std::io::stderr(),
-            )?;
-            return Err("playbook call porcess error".into());
-        }
         if let Some(stdout_file) = stdout_file {
             let mut file = self.create(stdout_file.to_string()).await.unwrap();
             let stdout = child.stdout.unwrap();
@@ -283,12 +222,12 @@ impl Context {
             let stderr = child.stderr.unwrap();
             std::io::copy(&mut std::io::BufReader::new(stderr), &mut file)?;
         }
-        if let Some(return_code) = return_code {
-            let mut file = self.create(return_code.to_string()).await.unwrap();
-            let return_code = exit_status.code().unwrap();
-            file.write_all(format!("{}", return_code).as_bytes())?;
+        if let Some(exit_code) = exit_code {
+            let mut file = self.create(exit_code.to_string()).await.unwrap();
+            let exit_code = exit_status.code().unwrap();
+            file.write_all(format!("{}", exit_code).as_bytes())?;
         }
-        Ok(())
+        Ok(exit_status.signal().unwrap())
     }
 
     async fn kill(
@@ -311,7 +250,7 @@ impl Context {
         to_role: &str,
         index: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let variable_name = self.replace_template(variable_name).await?;
+        let variable_name = self.rander_template(variable_name).await?;
         let mut file = self.open(variable_file.to_string()).await.unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
@@ -340,7 +279,7 @@ impl Context {
         from_role: &str,
         index: usize,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let variable_name = self.replace_template(variable_name).await?;
+        let variable_name = self.rander_template(variable_name).await?;
         let from_participants = Context::get_role_participants(
             self.participants.lock().await.as_ref().unwrap(),
             from_role.to_string(),
@@ -368,7 +307,7 @@ impl Context {
         let mut file = self.open(file.to_string()).await.unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
-        let entry_name = self.replace_template(entry_name).await.unwrap();
+        let entry_name = self.rander_template(entry_name).await.unwrap();
         self.cl
             .lock()
             .await
@@ -383,7 +322,7 @@ impl Context {
         &self,
         entry_name: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let entry_name = self.replace_template(entry_name).await.unwrap();
+        let entry_name = self.rander_template(entry_name).await.unwrap();
         self.cl
             .lock()
             .await
@@ -402,7 +341,7 @@ impl Context {
         let mut file = self.open(file.to_string()).await.unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
-        let entry_name = self.replace_template(entry_name).await.unwrap();
+        let entry_name = self.rander_template(entry_name).await.unwrap();
         self.cl
             .lock()
             .await
@@ -419,7 +358,7 @@ impl Context {
         file: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let mut file = self.create(file.to_string()).await.unwrap();
-        let entry_name = self.replace_template(entry_name).await.unwrap();
+        let entry_name = self.rander_template(entry_name).await.unwrap();
         let msg = self
             .cl
             .lock()
@@ -439,7 +378,7 @@ impl Context {
         file: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let mut file = self.create(file.to_string()).await.unwrap();
-        let entry_name = self.replace_template(entry_name).await.unwrap();
+        let entry_name = self.rander_template(entry_name).await.unwrap();
         let msg = self
             .cl
             .lock()
@@ -458,16 +397,19 @@ impl Context {
         step_spec: &StepSpec,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         // check if
-        if let Some(if_command) = &step_spec.if_cond {
-            let result = ctx.run_and_wait(if_command).await?;
-            if !result.status.success() {
+        if let Some(if_command) = &step_spec._if {
+            ctx.run("__if_process_command", if_command).await?;
+            let result = ctx
+                .wait(&"__if_process_command".to_string(), &None, &None, &None)
+                .await?;
+            if result != 0 {
                 return Ok(());
             }
         }
         // normal action
-        if let Some(process_sign) = &step_spec.process {
+        if let Some(process_command) = &step_spec.process {
             if let Some(step_name) = &step_spec.step_name {
-                ctx.run(step_name, process_sign).await?;
+                ctx.run(step_name, process_command).await?;
                 if step_spec.process_kill.is_none() && step_spec.process_wait.is_none() {
                     return Ok(());
                 }
@@ -477,25 +419,48 @@ impl Context {
         }
         if let Some(process_kill) = &step_spec.process_kill {
             ctx.kill(process_kill).await?;
-            ctx.wait(
-                process_kill,
-                &step_spec.stdout_file,
-                &step_spec.stderr_file,
-                &step_spec.return_code,
-                true,
-            )
-            .await?;
-            return Ok(());
+            let exit_code = ctx
+                .wait(
+                    process_kill,
+                    &step_spec.stdout_file,
+                    &step_spec.stderr_file,
+                    &step_spec.exit_code,
+                )
+                .await
+                .unwrap();
+            if let Some(check_code) = step_spec.check_exit_code {
+                if check_code != exit_code {
+                    return Err(format!(
+                        "playbook: process(killed) {} exits with {}, but expect {}",
+                        process_kill, exit_code, check_code
+                    )
+                    .into());
+                } else {
+                    return Ok(());
+                }
+            }
         }
         if let Some(process_wait) = &step_spec.process_wait {
-            ctx.wait(
-                process_wait,
-                &step_spec.stdout_file,
-                &step_spec.stderr_file,
-                &step_spec.return_code,
-                false,
-            )
-            .await?;
+            let exit_code = ctx
+                .wait(
+                    process_wait,
+                    &step_spec.stdout_file,
+                    &step_spec.stderr_file,
+                    &step_spec.exit_code,
+                )
+                .await
+                .unwrap();
+            if let Some(check_code) = step_spec.check_exit_code {
+                if check_code != exit_code {
+                    return Err(format!(
+                        "playbook: process {} exits with {}, but expect {}",
+                        process_wait, exit_code, check_code
+                    )
+                    .into());
+                } else {
+                    return Ok(());
+                }
+            }
             return Ok(());
         }
         if let Some(send_variable_name) = &step_spec.send_variable {
@@ -560,7 +525,7 @@ impl ProtocolEntry for Context {
         *self.participants.lock().await = Some(participants);
         *self.param.lock().await = Some(param);
         self.check_roles_num().await?;
-        let set_dir = self.replace_template(&self.working_dir).await.unwrap();
+        let set_dir = self.rander_template(&self.working_dir).await.unwrap();
         std::fs::create_dir_all(&set_dir)?;
         std::env::set_current_dir(set_dir)?;
         self.store_param_to_file().await?;
