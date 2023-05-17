@@ -30,18 +30,6 @@ You can use this module to quickly set up a protocol of CoLink with just a few l
     ./colink-playbook --addr <addr> --jwt <jwt>
     ```
 
-## Define your protocol in the TOML file
-
-* Define in `colink.toml` (recommend)
-  1. create the `colink.toml` in the project root directory.
-  2. define the needed field of `colink.toml`
-  3. define your protocol ([details](#Format of `TOML` file))
-* Define in other TOML file
-  1. create your TOML file
-  2. [Optional] if necessary, create and use the `colink.toml`.
-  3. set env variable `COLINK_PLAYBOOK_CONFIG = <config_path>` or pass `--config <config_path>` when start the protocol
-  4. define your protocol ([details](#Format of `TOML` file))
-
 ## Format of `TOML` file
 
 You can define your protocol like this: (you need to replace all the field as `<...>`)
