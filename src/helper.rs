@@ -56,15 +56,16 @@ pub fn replace_str(
     Ok(path.to_string())
 }
 
-pub fn replace_env_var(to_replace: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>>{
+pub fn replace_env_var(
+    to_replace: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {
     let re = Regex::new(r"\$(\w+)").unwrap();
-    let replaced_path =
-        re.replace_all(to_replace, |caps: &regex::Captures| {
-            let var_name = &caps[1];
-            match env::var(var_name) {
-                Ok(val) => val,
-                Err(_) => caps[0].to_string()
-            }
-        });
+    let replaced_path = re.replace_all(to_replace, |caps: &regex::Captures| {
+        let var_name = &caps[1];
+        match env::var(var_name) {
+            Ok(val) => val,
+            Err(_) => caps[0].to_string(),
+        }
+    });
     Ok(replaced_path.to_string())
 }

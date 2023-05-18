@@ -5,7 +5,7 @@ use std::{
     process::Stdio,
 };
 
-use crate::helper::{replace_str, replace_env_var};
+use crate::helper::{replace_env_var, replace_str};
 use crate::spec_parser::{RoleSpec, StepSpec};
 use colink::{CoLink, Participant, ProtocolEntry};
 use serde_json::json;
@@ -192,7 +192,7 @@ impl Context {
                 return Err(e.into());
             }
         };
-        let code = match exit_status.signal(){
+        let code = match exit_status.signal() {
             Some(x) => x,
             None => exit_status.code().unwrap(),
         };
