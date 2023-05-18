@@ -52,12 +52,12 @@ You can define your protocol like this: (you need to replace all the field as `<
         [[<your_po_pkg_name>.roles.<your_role_name_0>.playbook.steps]]
           # write actions here
           
-  [<your_po_pkg_name>.roles.<your_role_name_1>]
-    #define your other role action here
+    [<your_po_pkg_name>.roles.<your_role_name_1>]
+      #define your other role action here
 
-  [<your_po_pkg_name>.roles.<your_role_name_2>]
-    #define your other role action here
-   
+    [<your_po_pkg_name>.roles.<your_role_name_2>]
+      #define your other role action here
+
 ```
 
 ## Template string
