@@ -5,7 +5,7 @@ use std::{
     process::Stdio,
 };
 
-use crate::helper::replace_str;
+use crate::helper::{replace_str, replace_env_var};
 use crate::spec_parser::{RoleSpec, StepSpec};
 use colink::{CoLink, Participant, ProtocolEntry};
 use serde_json::json;
@@ -79,7 +79,8 @@ impl Context {
         &self,
         file_name: String,
     ) -> Result<Box<std::fs::File>, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let replaced_path = self.rander_template(&file_name).await.unwrap();
+        let randered_path = self.rander_template(&file_name).await.unwrap();
+        let replaced_path = replace_env_var(&randered_path).unwrap();
         let file = std::fs::File::open(replaced_path).unwrap();
         Ok(Box::new(file))
     }
@@ -88,7 +89,8 @@ impl Context {
         &self,
         file_name: String,
     ) -> Result<Box<std::fs::File>, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let replaced_path = self.rander_template(&file_name).await.unwrap();
+        let randered_path = self.rander_template(&file_name).await.unwrap();
+        let replaced_path = replace_env_var(&randered_path).unwrap();
         let path = PathBuf::from(replaced_path.to_string());
         let parent = path.parent().unwrap();
         std::fs::create_dir_all(parent)?;
@@ -141,39 +143,17 @@ impl Context {
         Ok(())
     }
 
-    // async fn run_and_wait(
-    //     &self,
-    //     command_str: &str,
-    // ) -> Result<Output, Box<dyn std::error::Error + Send + Sync + 'static>> {
-    //     let command_re = self.rander_template(command_str).await?;
-    //     let mut bind = std::process::Command::new("bash");
-    //     let command = bind.arg("-c").arg(command_re);
-    //     command.current_dir(self.rander_template(&self.working_dir).await.unwrap());
-    //     let core_addr = self
-    //         .cl
-    //         .lock()
-    //         .await
-    //         .as_ref()
-    //         .unwrap()
-    //         .get_core_addr()
-    //         .unwrap();
-    //     let user_jwt = self.cl.lock().await.as_ref().unwrap().get_jwt().unwrap();
-    //     command
-    //         .env("COLINK_CORE_ADDR", core_addr)
-    //         .env("COLINK_JWT", user_jwt);
-    //     let output = command.output()?;
-    //     Ok(output)
-    // }
-
     async fn run(
         &self,
         process_name: &str,
         process_str: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let command_re = self.rander_template(process_str).await?;
+        let randered_path = self.rander_template(&self.working_dir).await.unwrap();
+        let working_dir = replace_env_var(&randered_path).unwrap();
         let mut bind = std::process::Command::new("bash");
         let command = bind.arg("-c").arg(command_re);
-        command.current_dir(self.rander_template(&self.working_dir).await.unwrap());
+        command.current_dir(working_dir);
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
         let core_addr = self
@@ -212,6 +192,10 @@ impl Context {
                 return Err(e.into());
             }
         };
+        let code = match exit_status.signal(){
+            Some(x) => x,
+            None => exit_status.code().unwrap(),
+        };
         if let Some(stdout_file) = stdout_file {
             let mut file = self.create(stdout_file.to_string()).await.unwrap();
             let stdout = child.stdout.unwrap();
@@ -224,10 +208,9 @@ impl Context {
         }
         if let Some(exit_code) = exit_code {
             let mut file = self.create(exit_code.to_string()).await.unwrap();
-            let exit_code = exit_status.code().unwrap();
-            file.write_all(format!("{}", exit_code).as_bytes())?;
+            file.write_all(format!("{}", code).as_bytes())?;
         }
-        Ok(exit_status.signal().unwrap())
+        Ok(code)
     }
 
     async fn kill(
@@ -525,7 +508,8 @@ impl ProtocolEntry for Context {
         *self.participants.lock().await = Some(participants);
         *self.param.lock().await = Some(param);
         self.check_roles_num().await?;
-        let set_dir = self.rander_template(&self.working_dir).await.unwrap();
+        let randered_path = self.rander_template(&self.working_dir).await.unwrap();
+        let set_dir = replace_env_var(&randered_path).unwrap();
         std::fs::create_dir_all(&set_dir)?;
         std::env::set_current_dir(set_dir)?;
         self.store_param_to_file().await?;

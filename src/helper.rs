@@ -1,3 +1,7 @@
+use std::env;
+
+use regex::Regex;
+
 pub fn replace_str(
     to_replace: &str,
     values_table: std::collections::HashMap<String, String>,
@@ -50,4 +54,17 @@ pub fn replace_str(
         }
     }
     Ok(path.to_string())
+}
+
+pub fn replace_env_var(to_replace: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>>{
+    let re = Regex::new(r"\$(\w+)").unwrap();
+    let replaced_path =
+        re.replace_all(to_replace, |caps: &regex::Captures| {
+            let var_name = &caps[1];
+            match env::var(var_name) {
+                Ok(val) => val,
+                Err(_) => caps[0].to_string()
+            }
+        });
+    Ok(replaced_path.to_string())
 }
