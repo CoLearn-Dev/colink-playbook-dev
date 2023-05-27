@@ -14,7 +14,7 @@ pub struct StepSpec {
     pub recv_variable: Option<String>,
     pub from_role: Option<String>,
     pub to_role: Option<String>,
-    pub index: Option<i64>,
+    pub index: Option<i64>,  // index is for participant? maybe we should add more details in this naming as it is not self-explanatory
     pub file: Option<String>,
     pub stdout_file: Option<String>,
     pub stderr_file: Option<String>,
@@ -75,7 +75,7 @@ pub struct ProtocolSpec {
 
 impl ProtocolSpec {
     pub fn new(value: &Value) -> Result<ProtocolSpec, Box<dyn std::error::Error>> {
-        let name = value.get("name").unwrap().as_str().unwrap();
+        let name = value.get("name").unwrap().as_str().unwrap();  // actually, have you tested that, with the release executable, if you get the configuration wrong, what would happen?
         let workdir = value.get("workdir").unwrap().as_str().unwrap();
         let mut roles: Vec<RoleSpec> = Vec::new();
         let roles_table = value
@@ -96,7 +96,7 @@ impl ProtocolSpec {
 type PackageSpec = Vec<ProtocolSpec>;
 
 pub fn parse_spec_from_toml(toml_str: &str) -> Result<PackageSpec, Box<dyn std::error::Error>> {
-    let root_node = toml_str.parse::<Value>().unwrap();
+    let root_node = toml_str.parse::<Value>().unwrap();  // considering you are already passing the err in the fn sig, maybe avoid abusing `unwrap` and pass the err when possible
     let root_table = root_node.as_table().unwrap();
     let mut package_spec: PackageSpec = Vec::new();
     for (name, value) in root_table {
@@ -111,7 +111,7 @@ pub fn parse_spec_from_toml(toml_str: &str) -> Result<PackageSpec, Box<dyn std::
                 }
                 continue;
             } else {
-                package_spec.push(ProtocolSpec::new(value).unwrap());
+                package_spec.push(ProtocolSpec::new(value).unwrap());  // same here, why not just passing the err
             }
         }
     }
