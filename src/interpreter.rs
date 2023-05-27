@@ -12,12 +12,12 @@ use serde_json::json;
 use tokio::sync::Mutex;
 
 pub struct Context {
-    role: RoleSpec,
+    role: RoleSpec,  // just name it role_spec, role spec != role, avoid any mental exercise like name mapping whenever necessary
     working_dir: String,
     participants: Mutex<Option<Vec<Participant>>>,
     param: Mutex<Option<Vec<u8>>>,
     cl: Mutex<Option<CoLink>>,
-    process_map: Mutex<std::collections::HashMap<String, std::process::Child>>,
+    process_map: Mutex<std::collections::HashMap<String, std::process::Child>>,  // avoid Hungarian, personally I would prefer semantical naming reflecting fn, e.g. `step_name_to_process`
 }
 
 impl Context {
@@ -36,7 +36,7 @@ impl Context {
         }
     }
 
-    fn get_role_participants(participants: &[Participant], role_name: String) -> Vec<Participant> {
+    fn get_role_participants(participants: &[Participant], role_name: String) -> Vec<Participant> {  // why it is named role participants?
         let mut role_participants: Vec<Participant> = Vec::new();
         for participant in participants {
             if participant.role == role_name {
@@ -66,7 +66,7 @@ impl Context {
             .unwrap()
             .get_task_id()
             .unwrap();
-        replace_str(
+        replace_str(  // why creating it as a fn if it is only used once? (I mean for replace_str)
             to_replace,
             std::collections::HashMap::from([
                 ("user_id".to_string(), user_id),
@@ -75,7 +75,7 @@ impl Context {
         )
     }
 
-    async fn open_with_render(
+    async fn open_with_render(  // the name does not make sense...
         &self,
         file_name: String,
     ) -> Result<Box<std::fs::File>, Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -85,7 +85,7 @@ impl Context {
         Ok(Box::new(file))
     }
 
-    async fn create_with_render(
+    async fn create_with_render(  // same here
         &self,
         file_name: String,
     ) -> Result<Box<std::fs::File>, Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -98,7 +98,7 @@ impl Context {
         Ok(Box::new(file))
     }
 
-    async fn check_roles_num(
+    async fn check_roles_num(  // I think I've provided you with a more concise way to write this earlier?
         &self,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let role_name = self.role.name.clone();
@@ -145,7 +145,7 @@ impl Context {
 
     async fn run(
         &self,
-        process_name: &str,
+        process_name: &str,  // I would suggest avoiding a new concept `process_name` and just use `step_name`, less is better
         process_command: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let rendered_path = self.render_template(&self.working_dir).await.unwrap();
@@ -297,7 +297,7 @@ impl Context {
     async fn create_entry(
         &self,
         entry_name: &str,
-        file: &String,
+        file: &String,  // the variable is named file but is a string... file_name? file_path?
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let mut file = self.open_with_render(file.to_string()).await.unwrap();
         let mut payload = Vec::new();
@@ -346,7 +346,7 @@ impl Context {
 
     async fn read_entry(
         &self,
-        entry_name: &str,
+        entry_name: &str,  // here, shall we use `key` to be the same as https://github.com/CoLearn-Dev/colink-sdk-rust-dev/blob/cce2074861ed3fe9de2ee6dbd5973c0ac2108016/src/application.rs#L251
         file: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let mut file = self.create_with_render(file.to_string()).await.unwrap();
@@ -389,7 +389,7 @@ impl Context {
         // check if
         if let Some(if_command) = &step_spec._if {
             let if_command = ctx.render_template(if_command).await?;
-            ctx.run("__if_process_command", &if_command).await?;
+            ctx.run("__if_process_command", &if_command).await?;  // since you plan to track this, maybe we can give it a unique naming, related to the step name (e.g. `__if_<step_name>`)
             let result = ctx
                 .wait(&"__if_process_command".to_string(), &None, &None, &None)
                 .await?;
@@ -523,7 +523,7 @@ impl ProtocolEntry for Context {
         *self.cl.lock().await = Some(cl.clone());
         *self.participants.lock().await = Some(participants);
         *self.param.lock().await = Some(param);
-        self.check_roles_num().await?;
+        self.check_roles_num().await?;  // is this the only checking that we have?
         let rendered_path = self.render_template(&self.working_dir).await.unwrap();
         let set_dir = replace_env_var(&rendered_path).unwrap();
         std::fs::create_dir_all(&set_dir)?;
