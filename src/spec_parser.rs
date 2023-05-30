@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use toml::Value;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct StepSpec {
     #[serde(rename = "if")]
     pub _if: Option<String>,
@@ -33,6 +33,7 @@ impl StepSpec {
     }
 }
 
+#[derive(Clone)]
 pub struct RoleSpec {
     pub name: String,
     pub max_num: Option<i64>,

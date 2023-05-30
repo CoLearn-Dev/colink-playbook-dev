@@ -2,7 +2,7 @@ use std::env;
 
 use regex::Regex;
 
-pub fn replace_str(
+pub fn render_str(
     to_replace: &str,
     values_table: std::collections::HashMap<String, String>,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {

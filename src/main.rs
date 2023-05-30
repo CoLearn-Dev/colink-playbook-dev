@@ -2,7 +2,7 @@ mod spec_parser;
 use spec_parser::parse_spec_from_toml;
 mod helper;
 mod interpreter;
-use interpreter::Context;
+use interpreter::Interpreter;
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -20,8 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     for protocol_spec in protocol_spec_vec {
         for role in protocol_spec.roles {
             let name = protocol_spec.protocol_name.clone() + ":" + role.name.as_str();
-            let context = Context::new(role, &protocol_spec.workdir);
-            user_funcs.insert(name, Box::new(context));
+            let interpreter = Interpreter::new(role, &protocol_spec.workdir);
+            user_funcs.insert(name, Box::new(interpreter));
         }
     }
     colink::_protocol_start(cl, user_funcs, keep_alive_when_disconnect, vt_public_addr)?;
