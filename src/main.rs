@@ -1,6 +1,5 @@
 mod spec_parser;
 use spec_parser::parse_spec_from_toml;
-mod helper;
 mod interpreter;
 use interpreter::Interpreter;
 use std::fs;
@@ -15,7 +14,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         String,
         Box<dyn colink::ProtocolEntry + Send + Sync>,
     > = std::collections::HashMap::new();
-    let toml_str = fs::read_to_string(config).unwrap();
+    let toml_str = match fs::read_to_string(&config) {
+        Ok(val) => val,
+        Err(_) => return Err(format!("Unable to read configuration file: {config}").into()),
+    };
     let protocol_spec_vec = parse_spec_from_toml(&toml_str).unwrap();
     for protocol_spec in protocol_spec_vec {
         for role in protocol_spec.roles {

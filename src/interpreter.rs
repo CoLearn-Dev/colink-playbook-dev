@@ -1,22 +1,24 @@
 use std::{
+    env,
     io::{Read, Write},
     os::unix::process::ExitStatusExt,
     path::PathBuf,
     process::Stdio,
 };
 
-use crate::helper::{render_str, replace_env_var};
 use crate::spec_parser::{RoleSpec, StepSpec};
 use colink::{CoLink, Participant, ProtocolEntry};
+use regex::Regex;
 use serde_json::json;
 
 struct Context {
-    role: RoleSpec,
+    role_spec: RoleSpec,
     working_dir: String,
     participants: Vec<Participant>,
     param: Vec<u8>,
     cl: CoLink,
-    process_map: std::collections::HashMap<String, std::process::Child>,
+    step_name_to_process: std::collections::HashMap<String, std::process::Child>,
+    step_counter: i64,
 }
 
 impl Context {
@@ -32,57 +34,77 @@ impl Context {
             None => default_working_dir.to_string() + "/",
         };
         Context {
-            role: role_spec,
+            role_spec,
             working_dir: work_dir,
             participants: participants.to_vec(),
             param: param.to_vec(),
             cl,
-            process_map: std::collections::HashMap::new(),
+            step_name_to_process: std::collections::HashMap::new(),
+            step_counter: 0,
         }
     }
 
-    fn get_role_participants(participants: &[Participant], role_name: String) -> Vec<Participant> {
-        //filter participants by role, inline
-        let mut role_participants: Vec<Participant> = Vec::new();
-        for participant in participants {
-            if participant.role == role_name {
-                role_participants.push(participant.clone());
+    fn replace_env_var(
+        s: &str,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let re = Regex::new(r"\$(\w+)").unwrap();
+        let replaced_path = re.replace_all(s, |caps: &regex::Captures| {
+            let var_name = &caps[1];
+            match env::var(var_name) {
+                Ok(val) => val,
+                Err(_) => caps[0].to_string(),
             }
-        }
-        role_participants
+        });
+        Ok(replaced_path.to_string())
     }
 
     fn render_template(
         &self,
-        to_replace: &str,
+        s: &str,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {
         let user_id = self.cl.get_user_id().unwrap();
         let task_id = self.cl.get_task_id().unwrap();
-        render_str(
-            to_replace,
-            std::collections::HashMap::from([
-                ("user_id".to_string(), user_id),
-                ("task_id".to_string(), task_id),
-            ]),
-        )
+        let assignments = std::collections::HashMap::from([
+            ("user_id".to_string(), user_id),
+            ("task_id".to_string(), task_id),
+        ]);
+
+        let re = Regex::new(r"\{\{(\w+)(\[((\d+)?..(\d+)?)?\])?\}\}").unwrap();
+        let ret = re.replace_all(s, |caps: &regex::Captures| {
+            let var_name = caps.get(1).unwrap().as_str();
+            let var_value = assignments.get(var_name).unwrap();
+            let low_bound = match caps.get(4) {
+                Some(low_bound) => low_bound.as_str().parse::<usize>().unwrap_or(0),
+                None => 0,
+            };
+            let high_bound = match caps.get(5) {
+                Some(high_bound) => high_bound
+                    .as_str()
+                    .parse::<usize>()
+                    .unwrap_or(var_value.len()),
+                None => var_value.len(),
+            };
+            var_value[low_bound..high_bound].to_string()
+        });
+        Ok(ret.to_string())
     }
 
-    fn open_with_render(
+    fn render_path_and_open(
         &self,
         file_name: String,
     ) -> Result<Box<std::fs::File>, Box<dyn std::error::Error + Send + Sync + 'static>> {
         let rendered_path = self.render_template(&file_name).unwrap();
-        let replaced_path = replace_env_var(&rendered_path).unwrap();
+        let replaced_path = Self::replace_env_var(&rendered_path).unwrap();
         let file = std::fs::File::open(replaced_path).unwrap();
         Ok(Box::new(file))
     }
 
-    fn create_with_render(
+    fn render_path_and_create(
         &self,
         file_name: String,
     ) -> Result<Box<std::fs::File>, Box<dyn std::error::Error + Send + Sync + 'static>> {
         let rendered_path = self.render_template(&file_name).unwrap();
-        let replaced_path = replace_env_var(&rendered_path).unwrap();
+        let replaced_path = Self::replace_env_var(&rendered_path).unwrap();
         let path = PathBuf::from(replaced_path.to_string());
         let parent = path.parent().unwrap();
         std::fs::create_dir_all(parent)?;
@@ -91,18 +113,18 @@ impl Context {
     }
 
     fn check_roles_num(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let role_name = self.role.name.clone();
+        let role_name = self.role_spec.name.clone();
         let match_roles = self
             .participants
             .iter()
             .filter(|&x| x.role == role_name)
             .count();
-        if let Some(max_num) = self.role.max_num {
+        if let Some(max_num) = self.role_spec.max_num {
             if match_roles > max_num.try_into().unwrap() {
                 return Err(format!("roles {} more than the max number", role_name).into());
             }
         }
-        if let Some(min_num) = self.role.min_num {
+        if let Some(min_num) = self.role_spec.min_num {
             if match_roles < min_num.try_into().unwrap() {
                 return Err(format!("roles {} less than the min number", role_name).into());
             }
@@ -124,18 +146,18 @@ impl Context {
             "user_id":self.cl.get_user_id().unwrap(),
             "task_id":self.cl.get_task_id().unwrap(),
         });
-        let mut file = self.create_with_render(file_name).unwrap();
+        let mut file = self.render_path_and_create(file_name).unwrap();
         serde_json::to_writer(&mut file, &param_json)?;
         Ok(())
     }
 
     fn run(
         &mut self,
-        process_name: &str,
+        step_name: &str,
         process_command: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
         let rendered_path = self.render_template(&self.working_dir).unwrap();
-        let working_dir = replace_env_var(&rendered_path).unwrap();
+        let working_dir = Self::replace_env_var(&rendered_path).unwrap();
         let mut bind = std::process::Command::new("bash");
         let command = bind.arg("-c").arg(process_command);
         command.current_dir(working_dir);
@@ -146,8 +168,8 @@ impl Context {
         command
             .env("COLINK_CORE_ADDR", core_addr)
             .env("COLINK_JWT", user_jwt);
-        self.process_map
-            .insert(process_name.to_string(), command.spawn()?);
+        self.step_name_to_process
+            .insert(step_name.to_string(), command.spawn()?);
         Ok(())
     }
 
@@ -158,7 +180,7 @@ impl Context {
         stderr_file: &Option<String>,
         exit_code: &Option<String>,
     ) -> Result<i32, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut child = self.process_map.remove(process_name).unwrap();
+        let mut child = self.step_name_to_process.remove(process_name).unwrap();
         let exit_status = match child.try_wait() {
             Ok(Some(status)) => status,
             Ok(None) => child.wait()?,
@@ -173,17 +195,21 @@ impl Context {
             None => exit_status.code().unwrap(),
         };
         if let Some(stdout_file) = stdout_file {
-            let mut file = self.create_with_render(stdout_file.to_string()).unwrap();
+            let mut file = self
+                .render_path_and_create(stdout_file.to_string())
+                .unwrap();
             let stdout = child.stdout.unwrap();
             std::io::copy(&mut std::io::BufReader::new(stdout), &mut file)?;
         }
         if let Some(stderr_file) = stderr_file {
-            let mut file = self.create_with_render(stderr_file.to_string()).unwrap();
+            let mut file = self
+                .render_path_and_create(stderr_file.to_string())
+                .unwrap();
             let stderr = child.stderr.unwrap();
             std::io::copy(&mut std::io::BufReader::new(stderr), &mut file)?;
         }
         if let Some(exit_code) = exit_code {
-            let mut file = self.create_with_render(exit_code.to_string()).unwrap();
+            let mut file = self.render_path_and_create(exit_code.to_string()).unwrap();
             file.write_all(format!("{}", code).as_bytes())?;
         }
         Ok(code)
@@ -193,9 +219,10 @@ impl Context {
         &mut self,
         process_name: &String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut child = self.process_map.remove(process_name).unwrap();
+        let mut child = self.step_name_to_process.remove(process_name).unwrap();
         child.kill()?;
-        self.process_map.insert(process_name.clone(), child);
+        self.step_name_to_process
+            .insert(process_name.clone(), child);
         Ok(())
     }
 
@@ -206,11 +233,17 @@ impl Context {
         to_role: &str,
         index: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self.open_with_render(variable_file.to_string()).unwrap();
+        let mut file = self
+            .render_path_and_open(variable_file.to_string())
+            .unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
-        let total_participants =
-            Context::get_role_participants(&self.participants, to_role.to_string());
+        let total_participants: Vec<Participant> = self
+            .participants
+            .iter()
+            .filter(|participant| participant.role == to_role)
+            .cloned()
+            .collect();
         let participants = match index {
             Some(index) => vec![total_participants[index].clone()],
             None => total_participants,
@@ -228,14 +261,20 @@ impl Context {
         from_role: &str,
         index: usize,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let from_participants =
-            Context::get_role_participants(&self.participants, from_role.to_string());
+        let from_participants: Vec<Participant> = self
+            .participants
+            .iter()
+            .filter(|participant| participant.role == from_role)
+            .cloned()
+            .collect();
         let msg = self
             .cl
             .recv_variable(variable_name, &from_participants.as_slice()[index])
             .await?;
         if let Some(store_to_file) = variable_file {
-            let mut file = self.create_with_render(store_to_file.to_string()).unwrap();
+            let mut file = self
+                .render_path_and_create(store_to_file.to_string())
+                .unwrap();
             file.write_all(msg.as_slice())?;
         }
         Ok(())
@@ -243,54 +282,54 @@ impl Context {
 
     async fn create_entry(
         &self,
-        entry_name: &str,
-        file: &String,
+        key: &str,
+        file_name: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self.open_with_render(file.to_string()).unwrap();
+        let mut file = self.render_path_and_open(file_name.to_string()).unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
-        self.cl.create_entry(entry_name, payload.as_slice()).await?;
+        self.cl.create_entry(key, payload.as_slice()).await?;
         Ok(())
     }
 
     async fn delete_entry(
         &self,
-        entry_name: &str,
+        key: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        self.cl.delete_entry(entry_name).await?;
+        self.cl.delete_entry(key).await?;
         Ok(())
     }
 
     async fn update_entry(
         &self,
-        entry_name: &str,
-        file: &str,
+        key: &str,
+        file_name: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self.open_with_render(file.to_string()).unwrap();
+        let mut file = self.render_path_and_open(file_name.to_string()).unwrap();
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
-        self.cl.update_entry(entry_name, payload.as_slice()).await?;
+        self.cl.update_entry(key, payload.as_slice()).await?;
         Ok(())
     }
 
     async fn read_entry(
         &self,
-        entry_name: &str,
-        file: &String,
+        key: &str,
+        file_name: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self.create_with_render(file.to_string()).unwrap();
-        let msg = self.cl.read_entry(entry_name).await?;
+        let mut file = self.render_path_and_create(file_name.to_string()).unwrap();
+        let msg = self.cl.read_entry(key).await?;
         file.write_all(msg.as_slice())?;
         Ok(())
     }
 
     async fn read_or_wait_entry(
         &self,
-        entry_name: &str,
-        file: &String,
+        key: &str,
+        file_name: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let mut file = self.create_with_render(file.to_string()).unwrap();
-        let msg = self.cl.read_or_wait(entry_name).await?;
+        let mut file = self.render_path_and_create(file_name.to_string()).unwrap();
+        let msg = self.cl.read_or_wait(key).await?;
         file.write_all(msg.as_slice())?;
         Ok(())
     }
@@ -302,8 +341,15 @@ impl Context {
         // check if
         if let Some(if_command) = &step_spec._if {
             let if_command = ctx.render_template(if_command).unwrap();
-            ctx.run("__if_process_command", &if_command)?;
-            let result = ctx.wait(&"__if_process_command".to_string(), &None, &None, &None)?;
+            let if_step_name = format!(
+                "__if_{}",
+                match &step_spec.step_name {
+                    Some(step_name) => step_name.clone(),
+                    None => ctx.step_counter.to_string(),
+                }
+            );
+            ctx.run(&if_step_name, &if_command)?;
+            let result = ctx.wait(&if_step_name, &None, &None, &None)?;
             if result != 0 {
                 return Ok(());
             }
@@ -370,7 +416,7 @@ impl Context {
                 &send_variable_name,
                 file,
                 to_role,
-                step_spec.index.map(|x| x as usize),
+                step_spec.role_index.map(|x| x as usize),
             )
             .await?;
             return Ok(());
@@ -381,7 +427,7 @@ impl Context {
                 &recv_variable_name,
                 &step_spec.file,
                 step_spec.from_role.as_ref().unwrap(),
-                step_spec.index.unwrap() as usize,
+                step_spec.role_index.unwrap() as usize,
             )
             .await?;
             return Ok(());
@@ -449,13 +495,14 @@ impl ProtocolEntry for Interpreter {
             cl,
         );
         ctx.check_roles_num()?;
-        let rendered_path = ctx.render_template(&self.working_dir).unwrap();
-        let set_dir = replace_env_var(&rendered_path).unwrap();
+        let rendered_path = ctx.render_template(&ctx.working_dir).unwrap();
+        let set_dir = Context::replace_env_var(&rendered_path).unwrap();
         std::fs::create_dir_all(&set_dir)?;
         std::env::set_current_dir(set_dir)?;
         ctx.store_param_to_file()?;
         for step in &self.role.steps {
             Context::evaluate(&mut ctx, step).await?;
+            ctx.step_counter += 1;
         }
         Ok(())
     }
