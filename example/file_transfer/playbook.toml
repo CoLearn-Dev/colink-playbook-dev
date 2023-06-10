@@ -1,0 +1,64 @@
+[file_transfer]
+    workdir = "$PLAYBOOK_TRANSFER/run"
+    name = "file_transfer"
+
+    [file_transfer.roles]
+        [file_transfer.roles.sender]
+            max_num = 1
+            [file_transfer.roles.sender.playbook]
+                workdir = "$PLAYBOOK_TRANSFER/run/{{user_id[..8]}}/{{task_id[..8]}}"
+
+                [[file_transfer.roles.sender.playbook.steps]]
+                    step_name = "convert_param"
+                    process = "python3 $PLAYBOOK_TRANSFER/convert_param.py"
+                    process_wait = "convert_param"
+                    check_exit_code = 0
+
+                [[file_transfer.roles.sender.playbook.steps]]
+                    step_name = "load_file"
+                    process = "cp $PLAYBOOK_TRANSFER/$(cat file_name) send_file"
+                    process_wait = "load_file"
+                    check_exit_code = 0
+
+                [[file_transfer.roles.sender.playbook.steps]]
+                    send_variable = "file_content"
+                    file = "send_file"
+                    to_role = "receiver"
+
+                [[file_transfer.roles.sender.playbook.steps]]
+                    step_name = "remove_tmp"
+                    process = "rm send_file file_name"
+                    process_wait = "remove_tmp"
+                    check_exit_code = 0
+        
+        [file_transfer.roles.receiver]
+            [file_transfer.roles.receiver.playbook]
+                workdir = "$PLAYBOOK_TRANSFER/run/{{user_id[..8]}}/{{task_id[..8]}}"
+
+                [[file_transfer.roles.receiver.playbook.steps]]
+                    step_name = "convert_param"
+                    process = "python3 $PLAYBOOK_TRANSFER/convert_param.py"
+                    process_wait = "convert_param"
+                    check_exit_code = 0
+
+                [[file_transfer.roles.receiver.playbook.steps]]
+                    recv_variable = "file_content"
+                    from_role = "sender"
+                    file = "receive_file"
+                    index = 0
+
+                [[file_transfer.roles.receiver.playbook.steps]]
+                    step_name = "store_file"
+                    process = "cp receive_file $(cat file_name)"
+                    process_wait = "store_file"
+                    check_exit_code = 0
+                
+                [[file_transfer.roles.receiver.playbook.steps]]
+                    create_entry = "example:file_transfer:receive_file_content"
+                    file = "receive_file"
+
+                [[file_transfer.roles.receiver.playbook.steps]]
+                    step_name = "remove_tmp"
+                    process = "rm receive_file file_name"
+                    process_wait = "remove_tmp"
+                    check_exit_code = 0
