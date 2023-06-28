@@ -4,7 +4,7 @@ This module can be used to quickly set up a CoLink protocol with just a few line
 
 ## Running a Protocol by Playbook
 
-1. install the playbook from GitHub.
+1. Install the colink-playbook binary release.
 
     ```bash
     bash -c "$(curl -fsSL https://raw.githubusercontent.com/CoLearn-Dev/colink-playbook-dev/main/install.sh)"
